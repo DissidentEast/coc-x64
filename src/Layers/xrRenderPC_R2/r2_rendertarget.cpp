@@ -418,7 +418,7 @@ CRenderTarget::CRenderTarget		()
 		// Build material(s)
 		{
 			// Surface
-			R_CHK						(D3DXCreateVolumeTexture(HW.pDevice,TEX_material_LdotN,TEX_material_LdotH,4,1,0,D3DFMT_A8L8,D3DPOOL_MANAGED,&t_material_surf));
+			R_CHK						(HW.pDevice->CreateVolumeTexture(TEX_material_LdotN,TEX_material_LdotH,4,1,0,D3DFMT_A8L8,D3DPOOL_MANAGED,&t_material_surf,NULL));
 			t_material					= dxRenderDeviceRender::Instance().Resources->_CreateTexture(r2_material);
 			t_material->surface_set		(t_material_surf);
 
@@ -484,7 +484,7 @@ CRenderTarget::CRenderTarget		()
 			{
 				string_path					name;
 				xr_sprintf						(name,"%s%d",r2_jitter,it1);
-				R_CHK	(D3DXCreateTexture	(HW.pDevice,TEX_jitter,TEX_jitter,1,0,D3DFMT_Q8W8V8U8,D3DPOOL_MANAGED,&t_noise_surf[it1]));
+				R_CHK	(HW.pDevice->CreateTexture(TEX_jitter,TEX_jitter,1,0,D3DFMT_Q8W8V8U8,D3DPOOL_MANAGED,&t_noise_surf[it1],NULL));
 				t_noise[it1]					= dxRenderDeviceRender::Instance().Resources->_CreateTexture	(name);
 				t_noise[it1]->surface_set	(t_noise_surf[it1]);
 				R_CHK						(t_noise_surf[it1]->LockRect	(0,&R[it1],0,0));
@@ -513,7 +513,7 @@ CRenderTarget::CRenderTarget		()
 			int it = TEX_jitter_count - 1;
 			string_path					name;
 			xr_sprintf						(name,"%s%d",r2_jitter,it);
-			R_CHK	(D3DXCreateTexture	(HW.pDevice,TEX_jitter,TEX_jitter,1,0,D3DFMT_A32B32G32R32F,D3DPOOL_MANAGED,&t_noise_surf[it]));
+			R_CHK	(HW.pDevice->CreateTexture(TEX_jitter,TEX_jitter,1,0,D3DFMT_A32B32G32R32F,D3DPOOL_MANAGED,&t_noise_surf[it],NULL));
 			t_noise[it]					= dxRenderDeviceRender::Instance().Resources->_CreateTexture	(name);
 			t_noise[it]->surface_set	(t_noise_surf[it]);
 			R_CHK						(t_noise_surf[it]->LockRect	(0,&R[it],0,0));

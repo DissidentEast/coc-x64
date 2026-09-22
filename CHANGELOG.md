@@ -1,5 +1,19 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal 7d1: DX9 texture pipeline (2026-09-22)
+
++ Added `Layers/xrRender/TextureDDS.h`: DDS parse/load (2D/cube/forced
+  ARGB), exact BC1/2/3 decode, bilinear NPOT resample, box-filter chain
+  completion, Sobel normal maps, surface copy/convert, DDS writer.
++ Vendored `stb_dxt.h` (public domain) for DXT5 compression.
+= `Texture.cpp` load/bump paths, `TW_LoadTextureFromTexture` conversions,
+  R2 rendertarget/ material/jitter creation, and the DDI log line are D3DX-free.
+= Verified: all 5354 game DDS load byte-identical (except D3DX's own
+  sub-4x4 sanitization + 3 resampled files, both visually irrelevant);
+  normal orientation/scale proven on ramps; R2 level load OK.
+~ Known approximation: normal kernel is Sobel (rms ~10 vs D3DX, below the
+  DXT5 noise floor); BC encoder differs from D3DX's (same class).
+
 ## D3DX removal 7c: shader path (2026-09-22)
 
 + Added `Layers/xrRender/ShaderCTAB.h`: CTAB binary mirrors, comment-token

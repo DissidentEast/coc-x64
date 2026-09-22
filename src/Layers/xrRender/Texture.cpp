@@ -5,9 +5,16 @@
 #include "stdafx.h"
 #pragma hdrstop
 
-#pragma warning(disable:4995)
-#include <d3dx9.h>
-#pragma warning(default:4995)
+#include "TextureDDS.h" // D3DX-free DDS pipeline (was <d3dx9.h>)
+
+// DXT5 compressor implementation (stb_dxt, public domain). STBD_FABS avoids
+// the CRT fabs/fabsf banned by xrCore/vector.h for engine code.
+#pragma warning(push)
+#pragma warning(disable:4244) // third-party: int->u8 quantization in stb_dxt
+#define STB_DXT_IMPLEMENTATION
+#define STBD_FABS(x) ((x) < 0 ? -(x) : (x))
+#include "../../3rd party/stb/stb_dxt.h"
+#pragma warning(pop)
 
 #ifndef _EDITOR
 #include "dxRenderDeviceRender.h"
@@ -120,9 +127,15 @@ void				TW_Save	(ID3DTexture2D* T, LPCSTR name, LPCSTR prefix, LPCSTR postfix)
 	string256		fn;		strconcat	(sizeof(fn),fn,name,"_",prefix,"-",postfix);
 	for (int it=0; it<int(xr_strlen(fn)); it++)	
 		if ('\\'==fn[it])	fn[it]	= '_';
-	string256		fn2;	strconcat	(sizeof(fn2),fn2,"debug\\",fn,".dds");
-	Log						("* debug texture save: ",fn2);
-	R_CHK					(D3DXSaveTextureToFile	(fn2,D3DXIFF_DDS,T,0));
+	// Debug-only helper (no live callers); dumps to $logs$ instead of the
+	// old D3DX CWD-relative "debug\\" path.
+	string_path		fn2;
+	strconcat		(sizeof(fn2),fn2,"debug_",fn,".dds");
+	string_path		full;
+	FS.update_path	(full,"$logs$",fn2);
+	Log						("* debug texture save: ",full);
+	if (!xrDDS_Save2D(full,T))
+		Msg					("! debug texture save failed: ",full);
 }
 
 ID3DTexture2D*	TW_LoadTextureFromTexture
@@ -145,14 +158,13 @@ ID3DTexture2D*	TW_LoadTextureFromTexture
 
 	// Create HW-surface
 	if (D3DX_DEFAULT==t_dest_fmt)	t_dest_fmt = t_from_desc0.Format;
-	R_CHK					(D3DXCreateTexture(
-		HW.pDevice,
+	R_CHK					(HW.pDevice->CreateTexture(
 		top_width,top_height,
 		levels_exist,0,t_dest_fmt,
-		D3DPOOL_MANAGED,&t_dest
+		D3DPOOL_MANAGED,&t_dest,NULL
 		));
 
-	// Copy surfaces & destroy temporary
+	// Copy/convert surfaces
 	ID3DTexture2D* T_src= t_from;
 	ID3DTexture2D* T_dst= t_dest;
 
@@ -165,8 +177,24 @@ ID3DTexture2D*	TW_LoadTextureFromTexture
 		R_CHK	(T_src->GetSurfaceLevel	(L_src,&S_src));
 		R_CHK	(T_dst->GetSurfaceLevel	(L_dst,&S_dst));
 
-		// Copy
-		R_CHK	(D3DXLoadSurfaceFromSurface(S_dst,NULL,NULL,S_src,NULL,NULL,D3DX_FILTER_NONE,0));
+		// Copy (same format) or convert (normal-map pipeline only)
+		D3DSURFACE_DESC dsrc, ddst;
+		R_CHK	(S_src->GetDesc(&dsrc));
+		R_CHK	(S_dst->GetDesc(&ddst));
+		if (dsrc.Format == ddst.Format)
+			R_CHK(xrSurface_Copy(S_dst, S_src));
+		else if (dsrc.Format == D3DFMT_A8R8G8B8 && ddst.Format == D3DFMT_DXT5)
+			R_CHK(xrSurface_CompressDXT5(S_dst, S_src));
+		else if (dsrc.Format == D3DFMT_DXT5 && ddst.Format == D3DFMT_A8R8G8B8)
+			R_CHK(xrSurface_Decompress(S_dst, S_src));
+		else
+		{
+			Msg("! TW_LoadTextureFromTexture: unsupported conversion %d -> %d", dsrc.Format, ddst.Format);
+			S_src->Release();
+			S_dst->Release();
+			T_dst->Release();
+			return NULL;
+		}
 
 		// Release surfaces
 		_RELEASE				(S_src);
@@ -359,14 +387,14 @@ ID3DBaseTexture*	CRender::texture_load(LPCSTR fRName, u32& ret_msize)
 _DDS:
 	{
 		// Load and get header
-		D3DXIMAGE_INFO			IMG;
+		XR_DDSInfo				IMG;
 		S						= FS.r_open	(fn);
 #ifdef DEBUG
 		Msg						("* Loaded: %s[%d]",fn,S->length());
 #endif // DEBUG
 		img_size				= S->length	();
 		R_ASSERT				(S);
-		HRESULT const result	= D3DXGetImageInfoFromFileInMemory	(S->pointer(),S->length(),&IMG);
+		HRESULT const result	= xrDDS_Parse(S->pointer(),S->length(),&IMG);
 		if ( FAILED(result) ) {
 			Msg					("! Can't get image info for texture '%s'",fn);
 			FS.r_close			(S);
@@ -377,22 +405,16 @@ _DDS:
 			goto _DDS;
 		}
 
-		if (IMG.ResourceType	== D3DRTYPE_CUBETEXTURE)			goto _DDS_CUBE;
+		if (IMG.faces == 6)												goto _DDS_CUBE;
 		else														goto _DDS_2D;
 
 _DDS_CUBE:
 		{
 			HRESULT const result	=
-				D3DXCreateCubeTextureFromFileInMemoryEx(
+				xrDDS_LoadCube(
 					HW.pDevice,
 					S->pointer(),S->length(),
-					D3DX_DEFAULT,
-					IMG.MipLevels,0,
-					IMG.Format,
 					D3DPOOL_MANAGED,
-					D3DX_DEFAULT,
-					D3DX_DEFAULT,
-					0,&IMG,0,
 					&pTextureCUBE
 				);
 			FS.r_close				(S);
@@ -407,9 +429,9 @@ _DDS_CUBE:
 			}
 
 			// OK
-			dwWidth					= IMG.Width;
-			dwHeight				= IMG.Height;
-			fmt						= IMG.Format;
+			dwWidth					= IMG.width;
+			dwHeight				= IMG.height;
+			fmt						= IMG.format;
 			ret_msize				= calc_texture_size(img_loaded_lod, mip_cnt, img_size);
 			mip_cnt					= pTextureCUBE->GetLevelCount();
 			return					pTextureCUBE;
@@ -417,18 +439,12 @@ _DDS_CUBE:
 _DDS_2D:
 		{
 			strlwr					(fn);
-			// Load   SYS-MEM-surface, bound to device restrictions
+			// Load SYS-MEM-surface, bound to device restrictions
 			ID3DTexture2D*		T_sysmem;
 			HRESULT const result	=
-				D3DXCreateTextureFromFileInMemoryEx(
+				xrDDS_Load2D(
 					HW.pDevice,S->pointer(),S->length(),
-					D3DX_DEFAULT,D3DX_DEFAULT,
-					IMG.MipLevels,0,
-					IMG.Format,
 					D3DPOOL_SYSTEMMEM,
-					D3DX_DEFAULT,
-					D3DX_DEFAULT,
-					0,&IMG,0,
 					&T_sysmem
 				);
 			FS.r_close				(S);
@@ -444,12 +460,12 @@ _DDS_2D:
 			}
 
 			img_loaded_lod			= get_texture_load_lod(fn);
-			pTexture2D				= TW_LoadTextureFromTexture(T_sysmem,IMG.Format, img_loaded_lod, dwWidth, dwHeight);
+			pTexture2D				= TW_LoadTextureFromTexture(T_sysmem,IMG.format, img_loaded_lod, dwWidth, dwHeight);
 			mip_cnt					= pTexture2D->GetLevelCount();
 			_RELEASE				(T_sysmem);
 
 			// OK
-			fmt						= IMG.Format;
+			fmt						= IMG.format;
 			ret_msize				= calc_texture_size(img_loaded_lod, mip_cnt, img_size);
 			return					pTexture2D;
 		}
@@ -553,22 +569,37 @@ _BUMP_from_base:
 		*strstr		(fname,"_bump")	= 0;
 		R_ASSERT2	(FS.exist(fn,"$game_textures$",	fname,	".dds"),fname);
 
-		// Load   SYS-MEM-surface, bound to device restrictions
-		D3DXIMAGE_INFO			IMG;
+		// Load SYS-MEM-surface, bound to device restrictions.
+		// Forced to A8R8G8B8 with a full chain (old D3DX_DEFAULT semantics).
 		S						= FS.r_open	(fn);
 		img_size				= S->length	();
 		ID3DTexture2D*		T_base;
-		R_CHK2(D3DXCreateTextureFromFileInMemoryEx(
-			HW.pDevice,	S->pointer(),S->length(),
-			D3DX_DEFAULT,D3DX_DEFAULT,	D3DX_DEFAULT,0,D3DFMT_A8R8G8B8,
-			D3DPOOL_SYSTEMMEM,			D3DX_DEFAULT,D3DX_DEFAULT,
-			0,&IMG,0,&T_base	), fn);
+		R_CHK2(xrDDS_LoadAsARGB(HW.pDevice, S->pointer(), S->length(), &T_base), fn);
 		FS.r_close				(S);
+		D3DSURFACE_DESC			baseDesc;
+		R_CHK					(T_base->GetLevelDesc(0, &baseDesc));
 
 		// Create HW-surface
 		ID3DTexture2D*	T_normal_1	= 0;
-		R_CHK(D3DXCreateTexture		(HW.pDevice,IMG.Width,IMG.Height,D3DX_DEFAULT,0,D3DFMT_A8R8G8B8,D3DPOOL_SYSTEMMEM, &T_normal_1));
-		R_CHK(D3DXComputeNormalMap	(T_normal_1,T_base,0,D3DX_NORMALMAP_COMPUTE_OCCLUSION,D3DX_CHANNEL_LUMINANCE,_BUMPHEIGH));
+		R_CHK(HW.pDevice->CreateTexture(baseDesc.Width, baseDesc.Height, 0, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &T_normal_1, NULL));
+		{
+			// Generate the normal map per level (D3DX processed the whole chain).
+			// LUMINANCE height + occlusion flag (alpha is gloss-overwritten next).
+			const DWORD mips = T_normal_1->GetLevelCount();
+			R_ASSERT(mips == T_base->GetLevelCount());
+			for (DWORD i = 0; i < mips; ++i)
+			{
+				D3DLOCKED_RECT Rs, Rd;
+				D3DSURFACE_DESC dd;
+				R_CHK(T_normal_1->GetLevelDesc(i, &dd));
+				R_CHK(T_base->LockRect(i, &Rs, NULL, D3DLOCK_READONLY));
+				R_CHK(T_normal_1->LockRect(i, &Rd, NULL, 0));
+				xrNormalMap_Generate((u32*)Rd.pBits, Rd.Pitch / 4, (const u32*)Rs.pBits,
+					Rs.Pitch / 4, dd.Width, dd.Height, _BUMPHEIGH, true);
+				R_CHK(T_normal_1->UnlockRect(i));
+				R_CHK(T_base->UnlockRect(i));
+			}
+		}
 
 		// Transfer gloss-map
 		TW_Iterate_1OP				(T_normal_1,T_base,it_gloss_rev_base);
@@ -586,7 +617,7 @@ _BUMP_from_base:
 
 		// Calculate difference
 		ID3DTexture2D*	T_normal_1D = 0;
-		R_CHK(D3DXCreateTexture(HW.pDevice,dwWidth,dwHeight,T_normal_1U->GetLevelCount(),0,D3DFMT_A8R8G8B8,D3DPOOL_SYSTEMMEM,&T_normal_1D));
+		R_CHK(HW.pDevice->CreateTexture(dwWidth,dwHeight,T_normal_1U->GetLevelCount(),0,D3DFMT_A8R8G8B8,D3DPOOL_SYSTEMMEM,&T_normal_1D,NULL));
 		TW_Iterate_2OP		(T_normal_1D,T_normal_1,T_normal_1U,it_difference);
 
 		// Reverse channels back + transfer heightmap
