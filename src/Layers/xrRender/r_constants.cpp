@@ -1,9 +1,7 @@
 #include "stdafx.h"
 #pragma hdrstop
 
-#pragma warning(disable:4995)
-#include <d3dx9.h>
-#pragma warning(default:4995)
+#include "ShaderCTAB.h" // D3DX-free CTAB mirrors (was <d3dx9.h>)
 
 #include "ResourceManager.h"
 
@@ -62,8 +60,8 @@ ref_constant R_constant_table::get	(shared_str& S)
 #if !defined(USE_DX10) && !defined(USE_DX11)
 BOOL	R_constant_table::parse	(void* _desc, u32 destination)
 {
-	D3DXSHADER_CONSTANTTABLE* desc	= (D3DXSHADER_CONSTANTTABLE*) _desc;
-	D3DXSHADER_CONSTANTINFO* it		= (D3DXSHADER_CONSTANTINFO*) (LPBYTE(desc)+desc->ConstantInfo);
+	ShaderCTAB* desc	= (ShaderCTAB*) _desc;
+	ShaderCTAB_ConstantInfo* it		= (ShaderCTAB_ConstantInfo*) (LPBYTE(desc)+desc->ConstantInfo);
 	LPBYTE					 ptr	= LPBYTE(desc);
 	for (u32 dwCount = desc->Constants; dwCount; dwCount--,it++)
 	{
@@ -72,21 +70,21 @@ BOOL	R_constant_table::parse	(void* _desc, u32 destination)
 
 		// Type
 		u16		type		=	RC_float;
-		if	(D3DXRS_BOOL == it->RegisterSet)	type	= RC_bool;
-		if	(D3DXRS_INT4 == it->RegisterSet)	type	= RC_int;
+		if	(XR_RS_BOOL == it->RegisterSet)	type	= RC_bool;
+		if	(XR_RS_INT4 == it->RegisterSet)	type	= RC_int;
 
 		// Rindex,Rcount
 		u16		r_index		=	it->RegisterIndex;
 		u16		r_type		=	u16(-1);
 
 		// TypeInfo + class
-		D3DXSHADER_TYPEINFO*	T	= (D3DXSHADER_TYPEINFO*)(ptr+it->TypeInfo);
+		ShaderCTAB_TypeInfo*	T	= (ShaderCTAB_TypeInfo*)(ptr+it->TypeInfo);
 		BOOL bSkip					= FALSE;
 		switch (T->Class)
 		{
-		case D3DXPC_SCALAR:			r_type		=	RC_1x1;		break;
-		case D3DXPC_VECTOR:			r_type		=	RC_1x4;		break;
-		case D3DXPC_MATRIX_ROWS:
+		case XR_PC_SCALAR:			r_type		=	RC_1x1;		break;
+		case XR_PC_VECTOR:			r_type		=	RC_1x4;		break;
+		case XR_PC_MATRIX_ROWS:
 			{
 				switch (T->Columns)
 				{
@@ -116,21 +114,21 @@ BOOL	R_constant_table::parse	(void* _desc, u32 destination)
 				}
 			}
 			break;
-		case D3DXPC_MATRIX_COLUMNS:
+		case XR_PC_MATRIX_COLUMNS:
 			fatal		("Pclass MATRIX_COLUMNS unsupported");
 			break;
-		case D3DXPC_STRUCT:
-			fatal		("Pclass D3DXPC_STRUCT unsupported");
+		case XR_PC_STRUCT:
+			fatal		("Pclass XR_PC_STRUCT unsupported");
 			break;
-		case D3DXPC_OBJECT:
+		case XR_PC_OBJECT:
 			{
 				switch (T->Type)
 				{
-				case D3DXPT_SAMPLER:
-				case D3DXPT_SAMPLER1D:
-				case D3DXPT_SAMPLER2D:
-				case D3DXPT_SAMPLER3D:
-				case D3DXPT_SAMPLERCUBE:
+				case XR_PT_SAMPLER:
+				case XR_PT_SAMPLER1D:
+				case XR_PT_SAMPLER2D:
+				case XR_PT_SAMPLER3D:
+				case XR_PT_SAMPLERCUBE:
 					{
 						// ***Register sampler***
 						// We have determined all valuable info, search if constant already created
@@ -154,7 +152,7 @@ BOOL	R_constant_table::parse	(void* _desc, u32 destination)
 					}
 					break;
 				default:
-					fatal		("Pclass D3DXPC_OBJECT - object isn't of 'sampler' type");
+					fatal		("Pclass XR_PC_OBJECT - object isn't of 'sampler' type");
 					break;
 				}
 			}

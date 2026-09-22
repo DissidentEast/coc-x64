@@ -12,6 +12,8 @@
 #include "../xrRender/SkeletonCustom.h"
 #include "../xrRender/lighttrack.h"
 #include "../xrRender/dxRenderDeviceRender.h"
+#include "../xrRender/ShaderCTAB.h" // CTAB mirrors, CTAB scan
+#include <d3dcompiler.h> // D3DCompile/D3DDisassemble (Windows SDK)
 #include "../xrRender/dxWallMarkArray.h"
 #include "../xrRender/dxUIShader.h"
 //#include "../../xrServerEntities/smart_cast.h"
@@ -666,16 +668,17 @@ void	CRender::Statistics	(CGameFont* _F)
 }
 
 #pragma comment(lib,"d3dx9.lib")
+#pragma comment(lib,"d3dcompiler.lib") // D3DCompile/D3DDisassemble
 
 #include <boost/crc.hpp>
 
 static inline bool match_shader_id		( LPCSTR const debug_shader_id, LPCSTR const full_shader_id, FS_FileSet const& file_set, string_path& result );
 
 //--------------------------------------------------------------------------------------------------------------
-class	includer				: public ID3DXInclude
+class	includer				: public ID3DInclude
 {
 public:
-	HRESULT __stdcall	Open	(D3DXINCLUDE_TYPE IncludeType, LPCSTR pFileName, LPCVOID pParentData, LPCVOID *ppData, UINT *pBytes)
+	HRESULT __stdcall	Open	(D3D_INCLUDE_TYPE IncludeType, LPCSTR pFileName, LPCVOID pParentData, LPCVOID *ppData, UINT *pBytes)
 	{
 		string_path				pname;
 		strconcat				(sizeof(pname),pname,::Render->getShaderPath(),pFileName);
@@ -724,16 +727,16 @@ static HRESULT create_shader				(
 		}
 
 		LPCVOID			data		= NULL;
-		_result			= D3DXFindShaderComment	(buffer,MAKEFOURCC('C','T','A','B'),&data,NULL);
+		_result			= xrFindShaderCTAB(buffer, buffer_size, &data);
 		if (SUCCEEDED(_result) && data)
 		{
-			LPD3DXSHADER_CONSTANTTABLE	pConstants	= LPD3DXSHADER_CONSTANTTABLE(data);
-			sps_result->constants.parse	(pConstants,0x1);
+			const ShaderCTAB*	pConstants	= (const ShaderCTAB*)data;
+			sps_result->constants.parse	((void*)pConstants,0x1);
 		} 
 		else
 		{
 			Log			("! PS: ", file_name);
-			Msg			("! D3DXFindShaderComment hr == 0x%08x", _result);
+			Msg			("! CTAB not found hr == 0x%08x", _result);
 		}
 	}
 	else {
@@ -746,29 +749,32 @@ static HRESULT create_shader				(
 		}
 
 		LPCVOID			data		= NULL;
-		_result			= D3DXFindShaderComment	(buffer,MAKEFOURCC('C','T','A','B'),&data,NULL);
+		_result			= xrFindShaderCTAB(buffer, buffer_size, &data);
 		if (SUCCEEDED(_result) && data)
 		{
-			LPD3DXSHADER_CONSTANTTABLE	pConstants	= LPD3DXSHADER_CONSTANTTABLE(data);
-			svs_result->constants.parse	(pConstants,0x2);
+			const ShaderCTAB*	pConstants	= (const ShaderCTAB*)data;
+			svs_result->constants.parse	((void*)pConstants,0x2);
 		} 
 		else
 		{
 			Log			("! VS: ", file_name);
-			Msg			("! D3DXFindShaderComment hr == 0x%08x", _result);
+			Msg			("! CTAB not found hr == 0x%08x", _result);
 		}
 	}
 
 	if (disasm)
 	{
-		ID3DXBuffer*	disasm	= 0;
-		D3DXDisassembleShader(LPDWORD(buffer), FALSE, 0, &disasm );
-		string_path		dname;
-		strconcat		(sizeof(dname),dname,"disasm\\",file_name,('v'==pTarget[0])?".vs":".ps" );
-		IWriter*		W = FS.w_open("$logs$",dname);
-		W->w			(disasm->GetBufferPointer(),disasm->GetBufferSize());
-		FS.w_close		(W);
-		_RELEASE		(disasm);
+		ID3DBlob*	disasm	= 0;
+		D3DDisassemble(buffer, buffer_size, 0, NULL, &disasm);
+		if (disasm)
+		{
+			string_path		dname;
+			strconcat		(sizeof(dname),dname,"disasm\\",file_name,('v'==pTarget[0])?".vs":".ps" );
+			IWriter*		W = FS.w_open("$logs$",dname);
+			W->w			(disasm->GetBufferPointer(),disasm->GetBufferSize());
+			FS.w_close		(W);
+			_RELEASE		(disasm);
+		}
 	}
 
 	return				_result;
@@ -784,7 +790,7 @@ HRESULT	CRender::shader_compile			(
 		void*&							result
 	)
 {
-	D3DXMACRO						defines			[128];
+	D3D_SHADER_MACRO				defines			[128];
 	int								def_it			= 0;
 
 	char	sh_name[MAX_PATH] = "";
@@ -904,12 +910,13 @@ HRESULT	CRender::shader_compile			(
 	if (FAILED(_result))
 	{
 		includer					Includer;
-		LPD3DXBUFFER				pShaderBuf	= NULL;
-		LPD3DXBUFFER				pErrorBuf	= NULL;
-		LPD3DXCONSTANTTABLE			pConstants	= NULL;
-		LPD3DXINCLUDE               pInclude	= (LPD3DXINCLUDE)&Includer;
+		ID3DBlob*					pShaderBuf	= NULL;
+		ID3DBlob*					pErrorBuf	= NULL;
+		ID3DInclude*				pInclude	= &Includer;
 
-		_result						= D3DXCompileShader((LPCSTR)pSrcData,SrcDataLen,defines,pInclude,pFunctionName,pTarget,Flags|D3DXSHADER_USE_LEGACY_D3DX9_31_DLL,&pShaderBuf,&pErrorBuf,&pConstants);
+		// Modern successor of the dropped D3DXSHADER_USE_LEGACY_D3DX9_31_DLL:
+		// allows legacy 'half' precision and old syntax the shaders use.
+		_result						= D3DCompile(pSrcData,SrcDataLen,NULL,defines,pInclude,pFunctionName,pTarget,Flags|D3DCOMPILE_ENABLE_BACKWARDS_COMPATIBILITY,0,&pShaderBuf,&pErrorBuf);
 		if (SUCCEEDED(_result)) {
 			IWriter* file = FS.w_open(file_name);
 

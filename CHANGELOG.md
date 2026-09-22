@@ -1,5 +1,20 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal 7c: shader path (2026-09-22)
+
++ Added `Layers/xrRender/ShaderCTAB.h`: CTAB binary mirrors, comment-token
+  scanner (`xrFindShaderCTAB`), caps-based profile picker.
+= R1/R2 `shader_compile` now uses `D3DCompile` (+ backwards-compat flag,
+  the successor of the dropped LEGACY bit), `create_shader` uses the CTAB
+  scanner + `D3DDisassemble`; `r_constants` parses the mirrors; `xrD3DDefs`
+  takes `ID3DBlob`/`ID3DInclude`/`D3D_SHADER_MACRO` from `d3dcommon.h`.
+= Fixed 6 `r2/*.hlsl` using `point` as an identifier (reserved in modern
+  HLSL; r3 already used `pnt`) + screenshot blob types per DX branch.
+= Verified: probe proves identical constant tables vs D3DX on 202 shaders;
+  build 0 errors; R2 menu + full level load OK (153 shaders compiled
+  in-game, no failures).
+~ Editor-only `_CreateVS/PS` left for the wrapper island (7e).
+
 ## D3DX removal 7b2: sun TSM + 3DFluid math (2026-09-22)
 
 + Added `Layers/xrRender/SunTSM.h`: D3DX-free TSM vocabulary (SunVec2/3/4,
