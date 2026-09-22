@@ -1,5 +1,13 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal 7b1: small math sites (2026-09-22)
+
+= `device.cpp` full-view inverse, `R_Backend` clip-plane inverse-transpose,
+  and the occlusion ortho fill now use DirectXMath / direct formula instead
+  of D3DX (Fmatrix 4x3 invert is not valid for projective matrices).
+= Verified: build 0 errors, menu boot OK.
+~ Next: sun TSM x3 + 3DFluid math.
+
 ## D3DX removal 7a: mesh mender + decl helpers (2026-09-22)
 
 - Dropped `d3dx9.h` from `common/NvMender2003` (self-contained `MenderVec3`

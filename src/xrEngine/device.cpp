@@ -9,8 +9,8 @@
 #define MMNOMIXER
 #define MMNOJOY
 #include <mmsystem.h>
-// d3dx9.h
-#include <d3dx9.h>
+// DirectXMath (Windows SDK) for the full 4x4 inverse below
+#include <DirectXMath.h>
 #pragma warning(default:4995)
 
 #include "x_ray.h"
@@ -255,7 +255,10 @@ void CRenderDevice::on_idle()
     m_pRender->SetCacheXform(mView, mProject);
     //RCache.set_xform_view ( mView );
     //RCache.set_xform_project ( mProject );
-    D3DXMatrixInverse((D3DXMATRIX*)&mInvFullTransform, 0, (D3DXMATRIX*)&mFullTransform);
+    // Full 4x4 inverse (Fmatrix::invert is 4x3-only); Fmatrix is row-major,
+    // layout-compatible with XMFLOAT4X4.
+    DirectX::XMMATRIX full = DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&mFullTransform);
+    DirectX::XMStoreFloat4x4((DirectX::XMFLOAT4X4*)&mInvFullTransform, DirectX::XMMatrixInverse(nullptr, full));
 
     vCameraPosition_saved = vCameraPosition;
     mFullTransform_saved = mFullTransform;

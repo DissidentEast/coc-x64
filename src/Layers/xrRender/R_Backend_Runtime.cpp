@@ -3,7 +3,7 @@
 
 #pragma warning(push)
 #pragma warning(disable:4995)
-#include <d3dx9.h>
+#include <DirectXMath.h> // XMMatrixInverse/Transpose, XMPlaneNormalize/Transform
 #pragma warning(pop)
 
 #include "../../xrCDB/frustum.h"
@@ -162,15 +162,16 @@ void	CBackend::set_ClipPlanes	(u32 _enable, Fplane*	_planes /*=NULL */, u32 coun
 	VERIFY	(_planes && count);
 	if		(count>HW.Caps.geometry.dwClipPlanes)	count=HW.Caps.geometry.dwClipPlanes;
 
-	D3DXMATRIX			worldToClipMatrixIT;
-	D3DXMatrixInverse	(&worldToClipMatrixIT,NULL,(D3DXMATRIX*)&RDEVICE.mFullTransform);
-	D3DXMatrixTranspose	(&worldToClipMatrixIT,&worldToClipMatrixIT);
+	DirectX::XMMATRIX worldToClipMatrixIT = DirectX::XMMatrixTranspose(
+		DirectX::XMMatrixInverse(nullptr,
+			DirectX::XMLoadFloat4x4((const DirectX::XMFLOAT4X4*)&RDEVICE.mFullTransform)));
 	for		(u32 it=0; it<count; it++)		{
 		Fplane&		P			= _planes	[it];
-		D3DXPLANE	planeWorld	(-P.n.x,-P.n.y,-P.n.z,-P.d), planeClip;
-		D3DXPlaneNormalize		(&planeWorld,	&planeWorld);
-		D3DXPlaneTransform		(&planeClip,	&planeWorld, &worldToClipMatrixIT);
-		CHK_DX					(HW.pDevice->SetClipPlane(it,planeClip));
+		DirectX::XMVECTOR planeWorld = DirectX::XMPlaneNormalize(
+			DirectX::XMVectorSet(-P.n.x, -P.n.y, -P.n.z, -P.d));
+		DirectX::XMFLOAT4 planeClip;
+		DirectX::XMStoreFloat4(&planeClip, DirectX::XMPlaneTransform(planeWorld, worldToClipMatrixIT));
+		CHK_DX					(HW.pDevice->SetClipPlane(it, (const float*)&planeClip));
 	}
 
 	// Enable them
