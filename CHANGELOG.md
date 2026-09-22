@@ -1,5 +1,17 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal 7b2: sun TSM + 3DFluid math (2026-09-22)
+
++ Added `Layers/xrRender/SunTSM.h`: D3DX-free TSM vocabulary (SunVec2/3/4,
+  SunPlane, SunMatrix over Fmatrix) proven equivalent to D3DX9 by probe
+  (200 random 4x4 inverses, 50 orthos/transform batches, plane/vector ops).
+= Converted all three `r2_R_sun.cpp` (R2/R3/R4) and the 3DFluid renderer/
+  grid to it (Fmatrix/Fvector + Sun helpers; projective inverses stay full
+  4x4; `Fmatrix::transform(Fvector4,Fvector)` was NOT a substitute for
+  `D3DXVec3Transform` since it divides by w).
+= Verified: build 0 errors, menu boot OK.
+~ Next: shader path (D3DCompile/D3DReflect), textures, dxerr, wrapper purge.
+
 ## D3DX removal 7b1: small math sites (2026-09-22)
 
 = `device.cpp` full-view inverse, `R_Backend` clip-plane inverse-transpose,
