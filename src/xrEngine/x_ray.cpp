@@ -64,7 +64,7 @@ static int start_year = 1999; // 1999
 
 #ifndef DEDICATED_SERVER
 
-#include "../xrGameSpy/gamespy/md5c.c"
+#include "../xrCore/md5c.c"
 #include <ctype.h>
 
 #define DEFAULT_MODULE_HASH "3CAABCFCFF6F3A810019C6A72180F166"
@@ -605,7 +605,7 @@ struct damn_keys_filter
 #undef dwFilterKeysStructSize
 #undef dwToggleKeysStructSize
 
-// Фунция для тупых требований THQ и тупых американских пользователей
+// пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ THQ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 BOOL IsOutOfVirtualMemory()
 {
 #define VIRT_ERROR_SIZE 256
@@ -629,7 +629,7 @@ BOOL IsOutOfVirtualMemory()
     dwPageFileInMB = (DWORD)(statex.ullTotalPageFile / (1024 * 1024));
     dwPhysMemInMB = (DWORD)(statex.ullTotalPhys / (1024 * 1024));
 
-    // Довольно отфонарное условие
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     if ((dwPhysMemInMB > 500) && ((dwPageFileInMB + dwPhysMemInMB) > 2500))
         return 0;
 

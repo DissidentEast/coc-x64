@@ -4,7 +4,6 @@
 #include "xrserver.h"
 #include "game_cl_base.h"
 #include "xrmessages.h"
-#include "xrGameSpyServer.h"
 #include "../xrEngine/x_ray.h"
 #include "../xrEngine/device.h"
 #include "../xrEngine/IGame_Persistent.h"
@@ -13,6 +12,7 @@
 #include "string_table.h"
 #include "UIGameCustom.h"
 #include "ui/UICDkey.h"
+#include "RegistryFuncs.h"
 
 int		g_cl_save_demo = 0;
 extern XRCORE_API bool g_allow_heap_min;
@@ -118,7 +118,7 @@ bool CLevel::net_start1				()
 		} else
 		{
 			g_allow_heap_min		= false;
-			Server					= xr_new<xrGameSpyServer>();
+			Server					= xr_new<xrServer>();
 		}
 
 		if (xr_strcmp(p.m_alife,"alife"))

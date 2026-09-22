@@ -1,8 +1,7 @@
 #include "StdAfx.h"
 #include "RegistryFuncs.h"
-#include "../xrGameSpy/xrGameSpy_MainDefs.h"
+#include "../xrCore/xr_shared_defs.h"
 
-#define REGISTRY_BASE	HKEY_LOCAL_MACHINE
 
 bool	ReadRegistryValue(LPCSTR rKeyName, DWORD rKeyType, void* value )
 {	

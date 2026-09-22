@@ -46,9 +46,6 @@
 #include "character_hit_animations_params.h"
 #include "inventory_upgrade_manager.h"
 
-#include "GameSpy/GameSpy_Full.h"
-#include "GameSpy/GameSpy_Patching.h"
-
 #include "ai_debug_variables.h"
 #include "../xrphysics/console_vars.h"
 #ifdef DEBUG
@@ -1797,16 +1794,6 @@ public:
 	virtual void Execute(LPCSTR arguments)
 	{
 		if (!MainMenu()) return;
-		/*
-		CGameSpy_Available GSA;
-		shared_str result_string;
-		if (!GSA.CheckAvailableServices(result_string))
-		{
-		Msg(*result_string);
-		//			return;
-		};
-		CGameSpy_Patching GameSpyPatching;
-		*/
 		bool InformOfNoPatch = true;
 		if (arguments && *arguments)
 		{
@@ -1815,9 +1802,9 @@ public:
 			InformOfNoPatch = (bInfo != 0);
 		}
 
-		//		GameSpyPatching.CheckForPatch(InformOfNoPatch);
-
-		MainMenu()->GetGS()->GetGameSpyPatching()->CheckForPatch(InformOfNoPatch);
+		// No online patch service anymore (GameSpy gone).
+		if (InformOfNoPatch)
+			Msg("! Patch checking is not available in this build");
 	}
 };
 

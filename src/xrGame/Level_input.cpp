@@ -111,7 +111,7 @@ void CLevel::IR_OnMouseMove(int dx, int dy)
     }
 }
 
-// Обработка нажатия клавиш
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 extern bool g_block_pause;
 
 // Lain: added TEMP!!!
@@ -123,6 +123,7 @@ extern bool g_block_pause;
 #include <luabind/functor.hpp>
 #include "script_engine.h"
 #include "ai_space.h"
+#include "script_callback_ex.h"
 
 void CLevel::IR_OnKeyboardPress(int key)
 {

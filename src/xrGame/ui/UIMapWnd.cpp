@@ -19,6 +19,7 @@
 #include "UIHint.h"
 #include "map_hint.h"
 #include "uicursor.h"
+#include "../script_callback_ex.h"
 
 #include "UIPropertiesBox.h"
 #include "UIListBoxItem.h"

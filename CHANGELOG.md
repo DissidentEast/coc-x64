@@ -1,5 +1,30 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## GameSpy removal 6b (2026-09-22)
+
+* Removed the dead online-service layer (service shut down in 2014; CoC is
+  single-player only): vendored GameSpy SDK (`src/xrGameSpy/gamespy`, ~1100
+  files), the `xrGameSpy` project, X-Ray wrappers (`src/xrGame/gamespy`),
+  account/login/profile/stats/atlas managers and stores, cdkey/QR2/server
+  heartbeat code, and the orphaned `mp_gpprof_server` tool (731 files, was not
+  in the solution).
++ Added `src/xrCore/xr_shared_defs.h`: the few still-needed registry/port/
+  version constants salvaged from `xrGameSpy_MainDefs.h`; relocated stock RSA
+  `md5c.c/.h` to `src/xrCore/`.
+= Hollowed `reward_event_generator` and `player_account` (interfaces kept for
+  core/MP-mode callers, service guts removed); hollowed `CServerList` to an
+  always-empty list (moved plain `ServerInfo` data into its header);
+  `MainMenu` drops all MP managers/patch/download flows, keeps working
+  `GetGSVer`/`ValidateCDKey`/`GetPlayerName`/`GetCDKeyFromRegistry` stubs.
+= Fixed the transitive-include fallout properly: `script_callback_ex.h` now
+  pulls `pch_script.h` directly (same pattern as `mixed_delegate.h`), and the
+  9 TUs using `ai().script_engine().functor(...)` include what they use.
+= Removed the `M_GAMESPY_CDKEY_VALIDATION_*` net messages (enum + log strings
+  kept in sync); `strlwr` -> `_strlwr`.
+~ Known standing warning: C4789 in libjpeg `jcapimin.c` (LTCG false positive;
+  identical shared headers, runtime structsize guard).
+~ Verified: full build 0 errors, game boots to main menu on the new binaries.
+
 ## LuaJIT 2.1 + GC64 (2026-09-22)
 
 * Vendor-drop upgrade of the bundled LuaJIT 2.0.4 to upstream v2.1 branch tip;

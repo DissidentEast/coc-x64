@@ -42,6 +42,7 @@ void CSE_ALifeDynamicObject::on_before_register		()
 
 #include "level.h"
 #include "map_manager.h"
+#include "script_callback_ex.h"
 
 void CSE_ALifeDynamicObject::on_unregister()
 {

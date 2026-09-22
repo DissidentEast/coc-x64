@@ -16,6 +16,7 @@
 #include "object_broker.h"
 #include "UIInventoryUtilities.h"
 #include "game_cl_base.h"
+#include "../script_callback_ex.h"
 
 #include "UICursor.h"
 #include "UICellItem.h"

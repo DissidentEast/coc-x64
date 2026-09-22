@@ -23,6 +23,7 @@
 #include "inventory_upgrade_manager.h"
 #include "inventory_upgrade.h"
 #include "inventory_upgrade_property.h"
+#include "../script_callback_ex.h"
 
 #include "UIInventoryUtilities.h"
 #include "UIActorMenu.h"

@@ -8,6 +8,10 @@
 
 #pragma once
 
+// luabind::object/functor are used throughout this header's interface;
+// pull them in directly (same pattern as mixed_delegate.h) instead of
+// relying on transitive includes.
+#include "pch_script.h"
 #include "ai_space.h"
 #include "script_engine.h"
 

@@ -13,7 +13,6 @@
 #include "string_table.h"
 
 #include "debug_renderer.h"
-#include "xrGameSpyServer.h"
 
 ENGINE_API	bool g_dedicated_server;
 
@@ -819,33 +818,16 @@ void game_sv_GameState::OnEvent (NET_Packet &tNetPacket, u16 type, u32 time, Cli
 
 bool game_sv_GameState::CheckNewPlayer(xrClientData* CL)
 {
-	xrGameSpyServer*		gs_server = smart_cast<xrGameSpyServer*>(m_server);
-	R_ASSERT				(gs_server);
-	
+	// No public-server login gating anymore (no online service).
 	char const *			error_msg = NULL;
 	ClientID				tmp_client_id(CL->ID);
-	
-	if (gs_server->IsPublicServer())
+
+	if (CL->ps->m_account.is_online())
 	{
-		if (!CL->ps->m_account.is_online())
-		{
-			error_msg = "mp_please_login";
-		} else
-		{
-			if (FindPlayerName(CL->ps->getName(), CL))
-			{
-				error_msg = "mp_already_logged_in";
-			}
-		}
+		error_msg = "mp_use_offline_mode";
 	} else
 	{
-		if (CL->ps->m_account.is_online())
-		{
-			error_msg = "mp_use_offline_mode";
-		} else
-		{
-			CheckPlayerName(CL);
-		}
+		CheckPlayerName(CL);
 	}
 
 	if (error_msg)
@@ -1069,7 +1051,7 @@ void game_sv_GameState::OnRoundStart			()
 		}
 	};
 	rpointsBlocked.clear			();
-}// старт раунда
+}// пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 
 void game_sv_GameState::OnRoundEnd()
 { 
@@ -1087,7 +1069,7 @@ void game_sv_GameState::OnRoundEnd()
 	{
 		m_bFastRestart = true;
 	}
-}// конец раунда
+}// пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 
 void game_sv_GameState::SaveMapList				()
 {

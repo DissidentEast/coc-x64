@@ -202,7 +202,6 @@ protected:
 	
 	virtual bool			Check_ServerAccess( IClient* CL, string512& reason )	{ return true; }
 
-	virtual bool			NeedToCheckClient_GameSpy_CDKey		(IClient* CL)	{ return false; }
 	virtual void			Check_GameSpy_CDKey_Success			(IClient* CL);
 			void			RequestClientDigest					(IClient* CL);
 			void			ProcessClientDigest					(xrClientData* xrCL, NET_Packet* P);

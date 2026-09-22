@@ -5,6 +5,7 @@
 
 #include "../../../../xrCore/_vector3d_ext.h"
 #include "../../../level_graph.h"
+#include "../../../ai_space.h"
 
 #define TEMPLATE_SIGNATURE template <typename _Object>
 
@@ -590,13 +591,13 @@ void   ATTACK_ON_RUN_STATE::execute ()
 	object->set_state_sound						(MonsterSound::eMonsterSoundAggressive);
 	object->path().extrapolate_path				(true);
 	
-	// обработать squad инфо	
+	// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ squad пїЅпїЅпїЅпїЅ	
 	object->path().set_use_dest_orient			(false);
 
 // 	CMonsterSquad *squad	= monster_squad().get_squad(object);
 // 	if (squad && squad->SquadActive())
 // 	{
-// 		// Получить команду
+// 		// пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 // 		SSquadCommand command;
 // 		squad->GetCommand(object, command);
 // 		if (command.type == SC_ATTACK)

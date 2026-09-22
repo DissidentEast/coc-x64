@@ -47,7 +47,7 @@ public:
             for (int i = 0; i < n; ++i)
             {
                 _GetItem(cmd_line, i, m_params[i], '/');
-                strlwr(m_params[i]);
+                _strlwr(m_params[i]);
             }
         }
     };
@@ -83,7 +83,7 @@ public:
     virtual void OnAppDeactivate();
     virtual void _BCL OnFrame();
 
-    // вызывается только когда изменяется тип игры
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
     virtual void OnGameStart();
     virtual void OnGameEnd();
 

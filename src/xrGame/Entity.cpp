@@ -15,6 +15,7 @@
 #include "../Include/xrRender/Kinematics.h"
 #include "monster_community.h"
 #include "ai_space.h"
+#include "script_callback_ex.h"
 #include "alife_simulator.h"
 #include "alife_time_manager.h"
 

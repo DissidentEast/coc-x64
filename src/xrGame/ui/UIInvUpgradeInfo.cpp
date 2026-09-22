@@ -18,6 +18,7 @@
 #include "UIInvUpgradeProperty.h"
 
 #include "inventory_upgrade.h"
+#include "../script_callback_ex.h"
 #include "inventory_upgrade_property.h"
 
 

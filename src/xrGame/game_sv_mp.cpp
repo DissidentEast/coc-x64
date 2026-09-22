@@ -18,7 +18,6 @@
 #include "MPPlayersBag.h"
 #include "WeaponKnife.h"
 #include "game_cl_base_weapon_usage_statistic.h"
-#include "xrGameSpyServer.h"
 
 #include "game_sv_mp_vote_flags.h"
 #include "player_name_modifyer.h"
@@ -658,13 +657,13 @@ void	game_sv_mp::SetSkin					(CSE_Abstract* E, u16 Team, u16 ID)
 	//-------------------------------------------
 	string256 SkinName;
 	xr_strcpy(SkinName, pSettings->r_string("mp_skins_path", "skin_path"));
-	//загружены ли скины для этой комманды
+	//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 
 	if (!TeamList.empty()	&&
 		TeamList.size() > Team	&&
 		!TeamList[Team].aSkins.empty())
 	{
-		//загружено ли достаточно скинов для этой комманды
+		//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 		if (TeamList[Team].aSkins.size() > ID)
 		{
 			xr_strcat(SkinName, TeamList[Team].aSkins[ID].c_str());
@@ -1861,11 +1860,9 @@ void game_sv_mp::RejectGameItem(CSE_Abstract* entity)
 #include "string_table.h"
 void game_sv_mp::DumpOnlineStatistic()
 {
-	xrGameSpyServer* srv		= smart_cast<xrGameSpyServer*>(m_server);
-
+	// No master-server hostname anymore (no online service).
 	string_path					fn;
 	FS.update_path				(fn,"$logs$","mp_stats\\");
-	xr_strcat					(fn, srv->HostName.c_str());
 	xr_strcat					(fn, "\\online_dump.ltx" );
 
 	string64					t_stamp;
@@ -2046,11 +2043,9 @@ void game_sv_mp::StartToDumpStatistics	()
 		StopToDumpStatistics();
 	}
 	
-	xrGameSpyServer* srv		= smart_cast<xrGameSpyServer*>(m_server);
 	FS.update_path				(round_statistics_dump_fn,"$logs$","mp_stats\\");
 	string64					t_stamp;
 	timestamp					(t_stamp);
-	xr_strcat					(round_statistics_dump_fn, srv->HostName.c_str() );
 	xr_strcat					(round_statistics_dump_fn, "\\games\\dmp" );
 	xr_strcat					(round_statistics_dump_fn, t_stamp );
 	xr_strcat					(round_statistics_dump_fn, ".ltx" );
@@ -2254,19 +2249,6 @@ void	game_sv_mp::OnPlayerChangeName		(NET_Packet& P, ClientID sender)
 	if (!pClient || !pClient->net_Ready) return;
 	game_PlayerState* ps = pClient->ps;
 	if (!ps) return;
-
-	xrGameSpyServer* sv = smart_cast<xrGameSpyServer*>( m_server );
-	if( sv && sv->IsPublicServer() )
-	{
-		Msg( "Player \"%s\" try to change name on \"%s\" at public server.", ps->getName(), NewName );
-
-		NET_Packet			P;
-		GenerateGameMessage (P);
-		P.w_u32				(GAME_EVENT_SERVER_STRING_MESSAGE);
-		P.w_stringZ			("Server is public. Can\'t change player name!");
-		m_server->SendTo	( sender, P );
-		return;
-	}
 
 	shared_str old_name = ps->getName();
 	pClient->name					= NewName;

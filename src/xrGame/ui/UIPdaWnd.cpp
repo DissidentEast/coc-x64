@@ -23,6 +23,7 @@
 #include "UIHelper.h"
 #include "UIHint.h"
 #include "UIBtnHint.h"
+#include "../script_callback_ex.h"
 #include "UITaskWnd.h"
 #include "UIRankingWnd.h"
 #include "UILogsWnd.h"

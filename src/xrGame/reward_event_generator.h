@@ -2,8 +2,14 @@
 #define REWARD_EVENT_GENERATOR_INCLUDED
 
 #include "game_cl_base_weapon_usage_statistic.h"
-#include "profile_data_types.h"
 #include <boost/noncopyable.hpp>
+
+// NOTE (GameSpy removal, 6b): the online-services reward pipeline
+// (ATLAS submit, login profiles, best-scores backend) is gone — the
+// service shut down in 2014 and CoC is single-player only. This class
+// keeps its interface so MP-mode and core callers compile unchanged,
+// but every method is a no-op. Full removal belongs to the MP-modes
+// cleanup phase.
 
 class atlas_submit_queue;
 

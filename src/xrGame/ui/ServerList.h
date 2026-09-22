@@ -12,16 +12,74 @@
 
 
 class CUIXml;
-class CGameSpy_Browser;
 class CUIMessageBoxEx;
-class CGameSpy_Browser;
-struct ServerInfo;
 
 #define LST_SERVER		0 
 #define LST_SRV_PROP	1
 #define LST_PLAYERS		2
 #define DIF_HEIGHT		180
 #define LST_COLUMN_COUNT	7
+
+// Server list data, moved here from the deleted GameSpy_Browser.h.
+// The online browser is gone (service dead since 2014); the dialog keeps
+// working with an always-empty list so LAN/direct-connect flows still compile.
+struct GameInfo	{
+	shared_str	InfoName;
+	shared_str	InfoData;
+	GameInfo(LPCSTR Name, LPCSTR Data) { InfoName._set(Name); InfoData._set(Data); };
+};
+
+struct PlayerInfo {
+	string128	Name;
+	s16			Frags;
+	u16			Deaths;
+	u8			Rank;
+	u8			Team;
+	bool		Spectator;
+	u8			Artefacts;
+};
+
+struct TeamInfo
+{
+	u8			Score;
+};
+
+struct ServerInfo{
+//	SBServer pSBServer;
+	string128	m_Address;
+	string128	m_HostName;
+	string128	m_ServerName;
+	string128	m_SessionName;
+	string128	m_ServerGameType;
+	string128	m_ServerVersion;
+	u32			m_GameType;
+
+	s16						m_ServerNumPlayers;
+	s16						m_ServerMaxPlayers;
+	string128				m_ServerUpTime;
+	s16						m_ServerNumTeams;
+	bool					m_bDedicated;
+	bool					m_bFFire;
+	s16						m_s16FFire;
+	bool					m_bPassword;
+	bool					m_bUserPass;
+	s16						m_Ping;
+	s16						m_Port, m_HPort;
+
+	xr_vector<GameInfo>		m_aInfos;
+	xr_vector<PlayerInfo>	m_aPlayers;
+	xr_vector<TeamInfo>		m_aTeams;
+
+	int						Index;
+
+	ServerInfo () {};
+	ServerInfo (string128 NewAddress)
+	{
+		xr_strcpy(m_Address, NewAddress);
+	};
+
+	bool			operator	==		(LPCSTR Address){int res = xr_strcmp(m_Address, Address);return	res	 == 0;};
+};
 
 enum enum_connect_error
 {
@@ -64,8 +122,6 @@ public:
 			void	RefreshQuick();
 			void	ShowServerInfo();			
 	virtual	void	RefreshList();
-
-			void	on_game_spy_browser_destroy	(CGameSpy_Browser* browser);
 
 protected:
 			bool IsValidItem(ServerInfo& item);
@@ -110,8 +166,6 @@ protected:
 
 	CUIMessageBoxEx* m_message_box;
 
-	CGameSpy_Browser*	m_GSBrowser;	
-
 	shared_str						m_sort_func;
 	xr_vector<int>					m_tmp_srv_lst;
 	struct SrvItem{
@@ -136,5 +190,4 @@ protected:
 
 private:
 	connect_error_cb			m_connect_cb;
-	inline	CGameSpy_Browser&	browser			() const;
 };

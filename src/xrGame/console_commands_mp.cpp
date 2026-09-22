@@ -17,10 +17,8 @@
 #include "date_time.h"
 #include "game_cl_base_weapon_usage_statistic.h"
 #include "string_table.h"
-#include "../xrGameSpy/xrGameSpy_MainDefs.h"
+#include "../xrCore/xr_shared_defs.h"
 #include "DemoPlay_Control.h"
-#include "account_manager_console.h"
-#include "gamespy/GameSpy_GP.h"
 
 EGameIDs	ParseStringToGameType	(LPCSTR str);
 LPCSTR		GameTypeToString		(EGameIDs gt, bool bShort);
@@ -357,7 +355,7 @@ public:
 			return;
 		}
 		string4096 PlayerName	= "";
-		u32 const max_name_length	=	GP_UNIQUENICK_LEN - 1;
+		u32 const max_name_length	=	PLAYER_NAME_MAX_LEN - 1;
 		if (xr_strlen(args)>max_name_length)
 		{
 			strncpy_s				(PlayerName, args, max_name_length);
@@ -1059,7 +1057,7 @@ public:
 			return;
 		}
 		string4096 PlayerName		= "";
-		u32 const max_name_length	=	GP_UNIQUENICK_LEN - 1;
+		u32 const max_name_length	=	PLAYER_NAME_MAX_LEN - 1;
 		if (xr_strlen(buff)>max_name_length)
 		{
 
@@ -1262,7 +1260,7 @@ public:
 			return;
 		}
 		string4096 NewName = "";
-		u32 const max_name_length	=	GP_UNIQUENICK_LEN - 1;
+		u32 const max_name_length	=	PLAYER_NAME_MAX_LEN - 1;
 		if (xr_strlen(args)>max_name_length)
 		{
 			strncpy_s(NewName, args, max_name_length);
@@ -2154,16 +2152,7 @@ void register_mp_console_commands()
 	CMD4(CCC_SV_Integer,	"cl_dbg_max_ping",			(int*)&lag_simmulator_max_ping,	0,	1000);
 #endif
 
-	//GameSpy Presence and Messaging
-	CMD1(CCC_CreateGameSpyAccount,			"gs_create_account");
-	CMD1(CCC_GapySpyListProfiles,			"gs_list_profiles");
-	CMD1(CCC_GameSpyLogin,					"gs_login");
-	CMD1(CCC_GameSpyLogout,					"gs_logout");
-	CMD1(CCC_GameSpyDeleteProfile,			"gs_delete_profile");
-	CMD1(CCC_GameSpyPrintProfile,			"gs_print_profile");
-	CMD1(CCC_GameSpySuggestUNicks,			"gs_suggest_unicks");
-	CMD1(CCC_GameSpyRegisterUniqueNick,		"gs_register_unique_nick");
-	CMD1(CCC_GameSpyProfile,				"gs_profile");
+	// (GameSpy account console commands removed with the online service)
 	CMD4(CCC_Integer,						"sv_write_update_bin",				&g_sv_write_updates_bin, 0, 1);
 	CMD4(CCC_Integer,						"sv_traffic_optimization_level",	(int*)&g_sv_traffic_optimization_level, 0, 7);
 }

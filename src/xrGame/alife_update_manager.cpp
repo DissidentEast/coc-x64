@@ -18,6 +18,7 @@
 #include "xrserver.h"
 #include "level.h"
 #include "graph_engine.h"
+#include "script_callback_ex.h"
 #include "../xrEngine/x_ray.h"
 #include "restriction_space.h"
 #include "profiler.h"

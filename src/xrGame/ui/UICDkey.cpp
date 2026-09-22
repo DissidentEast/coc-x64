@@ -7,15 +7,15 @@
 
 #include "../../xrEngine/xr_IOConsole.h"
 #include "../RegistryFuncs.h"
-#include "../../xrGameSpy/xrGameSpy_MainDefs.h"
+#include "../../xrCore/xr_shared_defs.h"
 #include "player_name_modifyer.h"
-
-#include "gamespy/GameSpy_GP.h"
 
 #include <dinput.h>
 #include "../xrCore/os_clipboard.h"
 
-extern string64	gsCDKey;
+// Moved here from the deleted GameSpy_GCD_Client.cpp: the shared CD-key
+// buffer backing the `cdkey` console command and this dialog.
+string64	gsCDKey = "";
 LPCSTR AddHyphens( LPCSTR c );
 LPCSTR DelHyphens( LPCSTR c );
 
@@ -237,7 +237,7 @@ void GetPlayerName_FromRegistry(char* name, u32 const name_size)
 		Msg( "! Player name registry key (%s) not found !", REGISTRY_VALUE_USERNAME );
 		return;
 	}
-	u32 const max_name_length	=	GP_UNIQUENICK_LEN - 1;
+	u32 const max_name_length	=	PLAYER_NAME_MAX_LEN - 1;
 	if ( xr_strlen(name) > max_name_length )
 	{
 		name[max_name_length] = 0;
@@ -252,7 +252,7 @@ void GetPlayerName_FromRegistry(char* name, u32 const name_size)
 
 void WritePlayerName_ToRegistry(LPSTR name)
 {
-	u32 const max_name_length	=	GP_UNIQUENICK_LEN - 1;
+	u32 const max_name_length	=	PLAYER_NAME_MAX_LEN - 1;
 	if ( xr_strlen(name) > max_name_length )
 	{
 		name[max_name_length] = 0;

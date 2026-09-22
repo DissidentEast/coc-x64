@@ -5,7 +5,7 @@
 #include "net_messages.h"
 #include "NET_Log.h"
 
-#include "../xrGameSpy/xrGameSpy_MainDefs.h"
+#include "../xrCore/xr_shared_defs.h"
 
 #pragma warning(push)
 #pragma warning(disable:4995)

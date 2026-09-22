@@ -30,7 +30,7 @@
 #include "mainmenu.h"
 #include "WeaponKnife.h"
 #include "RegistryFuncs.h"
-#include "../xrGameSpy/xrGameSpy_MainDefs.h"
+#include "../xrCore/xr_shared_defs.h"
 #include "screenshot_server.h"
 #include "../xrCore/ppmd_compressor.h"
 #include "../xrCore/rt_compressor.h"
@@ -40,8 +40,6 @@
 #include "reward_event_generator.h"
 #include "game_cl_base_weapon_usage_statistic.h"
 #include "reward_manager.h"
-#include "login_manager.h"
-#include "stats_submitter.h"
 
 #include "xrServer_info.h" //for enum_server_info_type
 
