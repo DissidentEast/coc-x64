@@ -862,7 +862,7 @@ int oc_huff_codes_pack(oggpack_buffer *_opb,
     for(j=1;j<TH_NDCT_TOKENS;j++){
       maxlen=OC_MAXI(_codes[i][j].nbits,maxlen);
     }
-    mask=(1<<(maxlen>>1)<<(maxlen+1>>1))-1;
+    mask=(1<<(maxlen>>1)<<((maxlen+1)>>1))-1;
     /*Copy over the codes into our temporary workspace.
       The bit patterns are aligned, and the original entry each code is from
        is stored as well.*/
@@ -891,7 +891,7 @@ int oc_huff_codes_pack(oggpack_buffer *_opb,
         for(;entries[j].pattern&bit;bpos++)bit<<=1;
         /*Validate the code.*/
         if(j+1<TH_NDCT_TOKENS){
-          mask=~(bit-1)<<1;
+          mask=(~(bit-1))<<1;
           /*The next entry should have a 1 bit where we had a 0, and should
              match our code above that bit.
             This verifies both fullness and prefix-freeness simultaneously.*/

@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../../../ai_object_location_impl.h"
 #include "base_monster.h"
 #include "../../../../xrphysics/PhysicsShell.h"
 #include "../../../hit.h"

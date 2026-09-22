@@ -18,7 +18,12 @@
 #define NV_CONST
 
 // Set standard function names.
+// VS2015+/UCRT provides C99 snprintf natively; defining it as a macro
+// conflicts with the UCRT declaration (C1189/C4005), so only map it
+// for older toolsets.
+#if _MSC_VER < 1900
 #define snprintf _snprintf
+#endif
 #if _MSC_VER < 1500
 #	define vsnprintf _vsnprintf
 #endif

@@ -132,6 +132,9 @@
     <ClCompile Include="FS.cpp">
       <Filter>FS</Filter>
     </ClCompile>
+    <ClCompile Include="FS_impl_anchor.cpp">
+      <Filter>FS</Filter>
+    </ClCompile>
     <ClCompile Include="LocatorAPI.cpp">
       <Filter>FS</Filter>
     </ClCompile>

@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "pch_script.h"
+#include "../../script_game_object_impl.h"
 #include "ai_stalker.h"
 #include "ai_stalker_impl.h"
 #include "../../script_entity_action.h"

@@ -177,7 +177,7 @@ ogg_int64_t oc_bexp64(ogg_int64_t _z){
     w=0x26A3D0E401DD846DLL;
     for(i=0;;i++){
       mask=-(z<0);
-      w+=(w>>i+1)+mask^mask;
+      w+=(w>>(i+1))+mask^mask;
       z-=OC_ATANH_LOG2[i]+mask^mask;
       /*Repeat iteration 4.*/
       if(i>=3)break;
@@ -185,7 +185,7 @@ ogg_int64_t oc_bexp64(ogg_int64_t _z){
     }
     for(;;i++){
       mask=-(z<0);
-      w+=(w>>i+1)+mask^mask;
+      w+=(w>>(i+1))+mask^mask;
       z-=OC_ATANH_LOG2[i]+mask^mask;
       /*Repeat iteration 13.*/
       if(i>=12)break;
@@ -193,8 +193,8 @@ ogg_int64_t oc_bexp64(ogg_int64_t _z){
     }
     for(;i<32;i++){
       mask=-(z<0);
-      w+=(w>>i+1)+mask^mask;
-      z=z-(OC_ATANH_LOG2[i]+mask^mask)<<1;
+      w+=(w>>(i+1))+mask^mask;
+      z=(z-(OC_ATANH_LOG2[i]+mask^mask))<<1;
     }
     wlo=0;
     /*Skip the remaining iterations unless we really require that much
@@ -218,13 +218,13 @@ ogg_int64_t oc_bexp64(ogg_int64_t _z){
       for(;i<61;i++){
         mask=-(z<0);
         wlo+=(w>>i)+mask^mask;
-        z=z-(OC_ATANH_LOG2[31]+mask^mask)<<1;
+        z=(z-(OC_ATANH_LOG2[31]+mask^mask))<<1;
       }
     }
     w=(w<<1)+wlo;
   }
   else w=(ogg_int64_t)1<<62;
-  if(ipart<62)w=(w>>61-ipart)+1>>1;
+  if(ipart<62)w=(((w>>(61-ipart))+1)>>1);
   return w;
 }
 
@@ -234,8 +234,8 @@ ogg_int64_t oc_blog64(ogg_int64_t _w){
   int         ipart;
   if(_w<=0)return -1;
   ipart=OC_ILOGNZ_64(_w)-1;
-  if(ipart>61)_w>>=ipart-61;
-  else _w<<=61-ipart;
+  if(ipart>61)_w>>=(ipart-61);
+  else _w<<=(61-ipart);
   z=0;
   if(_w&_w-1){
     ogg_int64_t x;
@@ -254,43 +254,43 @@ ogg_int64_t oc_blog64(ogg_int64_t _w){
     for(i=0;i<4;i++){
       mask=-(y<0);
       z+=(OC_ATANH_LOG2[i]>>i)+mask^mask;
-      u=x>>i+1;
-      x-=(y>>i+1)+mask^mask;
+      u=x>>(i+1);
+      x-=((y>>(i+1)))+mask^mask;
       y-=u+mask^mask;
     }
     /*Repeat iteration 4.*/
     for(i--;i<13;i++){
       mask=-(y<0);
       z+=(OC_ATANH_LOG2[i]>>i)+mask^mask;
-      u=x>>i+1;
-      x-=(y>>i+1)+mask^mask;
+      u=x>>(i+1);
+      x-=((y>>(i+1)))+mask^mask;
       y-=u+mask^mask;
     }
     /*Repeat iteration 13.*/
     for(i--;i<32;i++){
       mask=-(y<0);
       z+=(OC_ATANH_LOG2[i]>>i)+mask^mask;
-      u=x>>i+1;
-      x-=(y>>i+1)+mask^mask;
+      u=x>>(i+1);
+      x-=((y>>(i+1)))+mask^mask;
       y-=u+mask^mask;
     }
     /*OC_ATANH_LOG2 has converged.*/
     for(;i<40;i++){
       mask=-(y<0);
       z+=(OC_ATANH_LOG2[31]>>i)+mask^mask;
-      u=x>>i+1;
-      x-=(y>>i+1)+mask^mask;
+      u=x>>(i+1);
+      x-=((y>>(i+1)))+mask^mask;
       y-=u+mask^mask;
     }
     /*Repeat iteration 40.*/
     for(i--;i<62;i++){
       mask=-(y<0);
       z+=(OC_ATANH_LOG2[31]>>i)+mask^mask;
-      u=x>>i+1;
-      x-=(y>>i+1)+mask^mask;
+      u=x>>(i+1);
+      x-=((y>>(i+1)))+mask^mask;
       y-=u+mask^mask;
     }
-    z=z+8>>4;
+    z=(z+8)>>4;
   }
   return OC_Q57(ipart)+z;
 }

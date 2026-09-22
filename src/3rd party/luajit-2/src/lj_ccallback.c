@@ -114,12 +114,12 @@ static void callback_mcode_init(global_State *g, uint8_t *page)
 #endif
   for (slot = 0; slot < CALLBACK_MAX_SLOT; slot++) {
     /* mov al, slot; jmp group */
-    *p++ = XI_MOVrib | RID_EAX; *p++ = (uint8_t)slot;
+    *p++ = (uint8_t)((unsigned)XI_MOVrib | RID_EAX); *p++ = (uint8_t)slot;
     if ((slot & 31) == 31 || slot == CALLBACK_MAX_SLOT-1) {
       /* push ebp/rbp; mov ah, slot>>8; mov ebp, &g. */
       *p++ = XI_PUSH + RID_EBP;
       *p++ = XI_MOVrib | (RID_EAX+4); *p++ = (uint8_t)(slot >> 8);
-      *p++ = XI_MOVri | RID_EBP;
+      *p++ = (uint8_t)((unsigned)XI_MOVri | RID_EBP);
       *(int32_t *)p = i32ptr(g); p += 4;
 #if LJ_64
       /* jmp [rip-pageofs] where lj_vm_ffi_callback is stored. */

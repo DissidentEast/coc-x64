@@ -8,6 +8,7 @@
 
 #include "pch_script.h"
 #include "patrol_path_params.h"
+#include "patrol_path_manager_space.h"
 
 using namespace luabind;
 

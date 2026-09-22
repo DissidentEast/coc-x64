@@ -990,7 +990,8 @@ inline void GetColorBlockColors_m1(DXTColBlock* pBlock, Color8888* col_0, Color8
 //-----------------------------------------------------------------------------
 WORD GetNumberOfBits(DWORD dwMask)
 {
-    for (WORD wBits = 0; dwMask; wBits++)
+    WORD wBits = 0;
+    for (; dwMask; wBits++)
     {
         dwMask = dwMask & (dwMask - 1);
     }

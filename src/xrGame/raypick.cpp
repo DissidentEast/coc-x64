@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "script_game_object_impl.h"
 #include "raypick.h"
 #include "level.h"
 

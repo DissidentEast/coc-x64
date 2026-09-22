@@ -232,7 +232,8 @@ CEffectorPP* CCameraManager::GetPPEffector(EEffectorPPType type)
 
 ECamEffectorType CCameraManager::RequestCamEffectorId()
 {
-    for (ECamEffectorType index = (ECamEffectorType)effCustomEffectorStartID;
+    ECamEffectorType index;
+    for (index = (ECamEffectorType)effCustomEffectorStartID;
          GetCamEffector(index);
          index = (ECamEffectorType)(index + 1))
     {
@@ -243,7 +244,8 @@ ECamEffectorType CCameraManager::RequestCamEffectorId()
 
 EEffectorPPType CCameraManager::RequestPPEffectorId()
 {
-    for (EEffectorPPType index = (EEffectorPPType)effCustomEffectorStartID;
+    EEffectorPPType index;
+    for (index = (EEffectorPPType)effCustomEffectorStartID;
          GetPPEffector(index);
          index = (EEffectorPPType)(index + 1))
     {

@@ -882,9 +882,8 @@ void xrDebug::_initialize (const bool& dedicated)
     // ::SetUnhandledExceptionFilter (UnhandledFilter); // exception handler to all "unhandled" exceptions
 }
 #else
-typedef int(__cdecl* _PNH)(size_t);
-_CRTIMP int __cdecl _set_new_mode(int);
-_CRTIMP _PNH __cdecl _set_new_handler(_PNH);
+// _PNH, _set_new_mode and _set_new_handler come from <new.h> (UCRT);
+// do not redeclare them here (would clash with the CRT linkage, C2375).
 
 #ifdef LEGACY_CODE
 #ifndef USE_BUG_TRAP

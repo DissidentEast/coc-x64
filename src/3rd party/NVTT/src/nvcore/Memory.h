@@ -26,27 +26,11 @@ namespace nv
 } // nv namespace
 
 
-// Override new/delete
-
-inline void * operator new (size_t size) throw()
-{
-	return nv::mem::malloc(size); 
-}
-
-inline void operator delete (void *p) throw()
-{
-	nv::mem::free(p); 
-}
-
-inline void * operator new [] (size_t size) throw()
-{
-	return nv::mem::malloc(size);
-}
-
-inline void operator delete [] (void * p) throw()
-{
-	nv::mem::free(p); 
-}
+// No global new/delete override here on purpose: nv::mem::malloc/free are
+// plain ::malloc/::free, so the default CRT operators are exactly equivalent.
+// (A global override in this header used to cause C4595 as inline, and
+// LNK2005 as a non-inline single definition when linked with binaries that
+// provide their own global operators, e.g. xrCore's xrMemory.h.)
 
 /*
 #ifdef _DEBUG

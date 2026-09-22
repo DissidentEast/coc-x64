@@ -7,6 +7,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
+#include "../../../ai_object_location_impl.h"
 #include "ai_rat.h"
 #include "../../ai_monsters_misc.h"
 #include "../../../../xrphysics/PhysicsShell.h"

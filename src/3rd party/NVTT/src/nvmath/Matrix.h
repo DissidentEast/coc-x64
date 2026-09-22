@@ -298,7 +298,7 @@ inline Matrix frustum(scalar xmin, scalar xmax, scalar ymin, scalar ymax, scalar
 /// Get perspective matrix.
 inline Matrix perspective(scalar fovy, scalar aspect, scalar zNear, scalar zFar)
 {
-	scalar xmax = zNear * tan(fovy / 2);
+	scalar xmax = zNear * tanf(fovy / 2);
 	scalar xmin = -xmax;
 
 	scalar ymax = xmax / aspect;
@@ -310,7 +310,7 @@ inline Matrix perspective(scalar fovy, scalar aspect, scalar zNear, scalar zFar)
 /// Get infinite perspective matrix.
 inline Matrix perspective(scalar fovy, scalar aspect, scalar zNear)
 {
-	scalar x = zNear * tan(fovy / 2);
+	scalar x = zNear * tanf(fovy / 2);
 	scalar y = x / aspect;
 	return frustum( -x, x, -y, y, zNear );	
 }

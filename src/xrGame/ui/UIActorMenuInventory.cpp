@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "../script_game_object_impl.h"
 #include "UIActorMenu.h"
 #include "../inventory.h"
 #include "../inventoryOwner.h"

@@ -1035,11 +1035,8 @@ void CPHShell::SetCallbacks( )
     };
     std::for_each( elements.begin(), elements.end(), set_bone_callback() );
 
-    struct set_bone_reference: private boost::noncopyable
-    {
-        IKinematics &K;
-        set_bone_reference( IKinematics &K_ ): K( K_ ){}
-        void operator() ( u16 id )
+    IKinematics &K = *PKinematics();
+    for_each_bone_id(K, [&K](u16 id)
         {
             CBoneInstance &bi  = K.LL_GetBoneInstance(id);
             if(!bi.callback() || bi.callback_type() != bctPhysics  )
@@ -1048,9 +1045,7 @@ void CPHShell::SetCallbacks( )
                 if( root_e && K.LL_GetBoneVisible( id ) )
                     bi.set_callback( bctPhysics, 0, cast_PhysicsElement( root_e ) );
             }
-        }
-    };
-    for_each_bone_id( *PKinematics(), set_bone_reference( *PKinematics() ) );
+        });
     
     //element_position_in_set_calbacks=u16(-1);
     
@@ -1595,10 +1590,10 @@ void CPHShell::SetIgnoreRagDoll()
 }
 
 
-    //Делает данный физический объек анимированным 
+    //пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 
 void CPHShell::CreateShellAnimator( CInifile const * ini, LPCSTR section )
 {   
-    //Для фильтра коллизий относим данный объект к классу анимированных
+    //пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     CPHCollideValidator::SetAnimatedClass(*this);
     m_pPhysicsShellAnimatorC=xr_new<CPhysicsShellAnimator>( this,  ini, section );
     VERIFY( PhysicsRefObject( ) );
@@ -1606,17 +1601,17 @@ void CPHShell::CreateShellAnimator( CInifile const * ini, LPCSTR section )
     //m_pPhysicsShellAnimatorC->ResetCallbacks();
 }
 
-//Настраивает фильтр коллизий на игнорирование столкновенний данного
-//физического объекта с анимированным физическим объектом
+//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+//пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 void CPHShell::SetIgnoreAnimated()
 {
-    //Для фильтра коллизий указываем, что данный
-    //физический объект игнорирует анимированные физические тела
+    //пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+    //пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
     
     CPHCollideValidator::SetAnimatedClassNotCollide(*this);
 }
 
-//Выдает информацию о том является ли данный объект анимированным
+//пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 
 
 void    CPHShell::              SetSmall()

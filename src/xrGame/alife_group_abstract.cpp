@@ -132,7 +132,9 @@ void CSE_ALifeGroupAbstract::try_switch_offline		()
 	VERIFY								(I);
 	
 	// iterating on group members
-	for (u32 i=0, N = (u32)m_tpMembers.size(); i<N; ++i) {
+	u32	i;
+	u32	ncount = (u32)m_tpMembers.size();
+	for (i=0; i<ncount; ++i) {
 		// casting group member to the abstract monster to get access to the Health property
 		CSE_ALifeMonsterAbstract		*tpGroupMember = smart_cast<CSE_ALifeMonsterAbstract*>(ai().alife().objects().object(m_tpMembers[i]));
 		if (!tpGroupMember)
@@ -182,7 +184,7 @@ void CSE_ALifeGroupAbstract::try_switch_offline		()
 		tpGroupMember->m_bOnline			= true;
 		--m_wCount;
 		--i;
-		--N;
+		--ncount;
 	}
 
 	// checking if group is not empty
@@ -192,7 +194,7 @@ void CSE_ALifeGroupAbstract::try_switch_offline		()
 	if (!I->can_switch_offline())
 		return;
 	
-	if (I->can_switch_online() || (i == N))
+	if (I->can_switch_online() || (i == ncount))
 		I->alife().switch_offline			(I);
 }
 

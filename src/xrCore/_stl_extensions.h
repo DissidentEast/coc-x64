@@ -23,7 +23,7 @@ using std::swap;
 #define xr_set std::set
 #define xr_multiset std::multiset
 #define xr_map std::map
-#define xr_hash_map std::hash_map
+#define xr_hash_map std::unordered_map
 #define xr_multimap std::multimap
 #define xr_string std::string
 
@@ -85,8 +85,8 @@ public:
     char* _charalloc(size_type n) { return (char*)allocate(n); }
     void deallocate(pointer p, size_type n) const { xr_free(p); }
     void deallocate(void* p, size_type n) const { xr_free(p); }
-    void construct(pointer p, const T& _Val) { std::_Construct(p, _Val); }
-    void destroy(pointer p) { std::_Destroy(p); }
+    void construct(pointer p, const T& _Val) { ::new ((void*)p) T(_Val); }
+    void destroy(pointer p) { p->~T(); }
     size_type max_size() const { size_type _Count = (size_type)(-1) / sizeof(T); return (0 < _Count ? _Count : 1); }
 };
 
@@ -220,18 +220,20 @@ template <typename V, class _HashFcn = std::hash<V>, class _EqualKey = std::equa
 template <typename K, class V, class _HashFcn = std::hash<K>, class _EqualKey = std::equal_to<K>, typename allocator = xalloc<std::pair<K, V> > > class xr_hash_map : public std::hash_map < K, V, _HashFcn, _EqualKey, allocator > { public: u32 size() const { return (u32)__super::size(); } };
 template <typename K, class V, class _HashFcn = std::hash<K>, class _EqualKey = std::equal_to<K>, typename allocator = xalloc<std::pair<K, V> > > class xr_hash_multimap : public std::hash_multimap < K, V, _HashFcn, _EqualKey, allocator > { public: u32 size() const { return (u32)__super::size(); } };
 #else
-template <typename K, class V, class _Traits = stdext::hash_compare<K, std::less<K> >, typename allocator = xalloc<std::pair<K, V> > > class xr_hash_map : public stdext::hash_map < K, V, _Traits, allocator > { public: u32 size() const { return (u32)__super::size(); } };
+// stdext::hash_map was removed from MSVC; use the standard unordered_map.
+// Default hasher/equal_to preserve the old hash_compare<K, less<K>> semantics.
+template <typename K, class V, class _Hasher = std::hash<K>, class _EqualKey = std::equal_to<K>, typename allocator = xalloc<std::pair<const K, V> > > class xr_hash_map : public std::unordered_map < K, V, _Hasher, _EqualKey, allocator > { public: u32 size() const { return (u32)__super::size(); } };
 #endif // #ifdef STLPORT
 
 #endif
 
 template <class _Ty1, class _Ty2> inline std::pair<_Ty1, _Ty2> mk_pair(_Ty1 _Val1, _Ty2 _Val2) { return (std::pair<_Ty1, _Ty2>(_Val1, _Val2)); }
 
-struct pred_str : public std::binary_function < char*, char*, bool >
+struct pred_str 
 {
     IC bool operator()(const char* x, const char* y) const { return xr_strcmp(x, y) < 0; }
 };
-struct pred_stri : public std::binary_function < char*, char*, bool >
+struct pred_stri 
 {
     IC bool operator()(const char* x, const char* y) const { return stricmp(x, y) < 0; }
 };

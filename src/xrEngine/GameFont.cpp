@@ -63,7 +63,7 @@ void CGameFont::Initialize(LPCSTR cShader, LPCSTR cTextureName)
         xr_strcpy(cTexture, sizeof(cTexture), cTextureName);
 
     uFlags &= ~fsValid;
-    vTS.set(1.f, 1.f); // обязательно !!!
+    vTS.set(1.f, 1.f); // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ !!!
 
     eCurrentAlignment = alLeft;
     vInterval.set(1.f, 1.f);
@@ -220,7 +220,8 @@ u16 CGameFont::GetCutLengthPos(float fTargetWidth, const char* pszText)
 
     u16 len = mbhMulti2Wide(wsStr, wsPos, MAX_MB_CHARS, pszText);
 
-    for (u16 i = 1; i <= len; i++)
+    u16 i;
+    for (i = 1; i <= len; i++)
     {
 
         fDelta = GetCharTC(wsStr[i]).z - 2;
