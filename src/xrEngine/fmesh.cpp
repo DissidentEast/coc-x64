@@ -40,8 +40,8 @@ void ConvertVertices(u32 dwTypeDest, void *pDest, u32 dwTypeSrc, void *pSource, 
 u32 TransferMask [64];
 u32 tmPos = 0;
 u32 tmPosSrc = 0;
-u32 dwSizeSrc = D3DXGetFVFVertexSize(dwTypeSrc)/4;
-u32 dwSizeDest = D3DXGetFVFVertexSize(dwTypeDest)/4;
+u32 dwSizeSrc = xrGetFVFVertexSize(dwTypeSrc)/4;
+u32 dwSizeDest = xrGetFVFVertexSize(dwTypeDest)/4;
 u32* dest = (u32*)pDest;
 u32* src = (u32*)pSource;
 

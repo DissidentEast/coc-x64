@@ -121,10 +121,10 @@ void Fvisual::Load		(const char* N, IReader *data, u32 dwFlags)
 			R_ASSERT			(data->find_chunk(OGF_VERTICES));
 			vBase				= 0;
 			u32 fvf				= data->r_u32				();
-			CHK_DX				(D3DXDeclaratorFromFVF(fvf,dcl));
+			CHK_DX				(xrDeclaratorFromFVF(fvf,dcl));
 			vFormat				= dcl;
 			vCount				= data->r_u32				();
-			u32 vStride			= D3DXGetFVFVertexSize		(fvf);
+			u32 vStride			= xrGetFVFVertexSize		(fvf);
 
 #if defined(USE_DX10) || defined(USE_DX11)
 			VERIFY				(NULL==p_rm_Vertices);

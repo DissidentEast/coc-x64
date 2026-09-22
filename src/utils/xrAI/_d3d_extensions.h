@@ -93,23 +93,131 @@ public:
 #endif
 
 #ifndef NO_XR_VDECLARATOR
+// D3DX-free vertex declaration helpers (same semantics as the D3DX9 originals,
+// so no d3dx9 link dependency for FVF/decl queries).
+inline u32 xrDeclTypeSize(u8 type)
+{
+	switch (type)
+	{
+	case D3DDECLTYPE_FLOAT1: return 4;
+	case D3DDECLTYPE_FLOAT2: return 8;
+	case D3DDECLTYPE_FLOAT3: return 12;
+	case D3DDECLTYPE_FLOAT4: return 16;
+	case D3DDECLTYPE_D3DCOLOR: return 4;
+	case D3DDECLTYPE_UBYTE4: return 4;
+	case D3DDECLTYPE_SHORT2: return 4;
+	case D3DDECLTYPE_SHORT4: return 8;
+	default: return 0;
+	}
+}
+// Number of elements before D3DDECL_END (== D3DXGetDeclLength).
+inline u32 xrGetDeclLength(const D3DVERTEXELEMENT9* dcl)
+{
+	u32 n = 0;
+	while (dcl[n].Stream != 0xFF)
+		++n;
+	return n;
+}
+// Packed stride of one stream (== D3DXGetDeclVertexSize).
+inline u32 xrGetDeclVertexSize(const D3DVERTEXELEMENT9* dcl, u32 stream)
+{
+	u32 size = 0;
+	for (u32 i = 0; dcl[i].Stream != 0xFF; ++i)
+		if (dcl[i].Stream == stream)
+			size += xrDeclTypeSize(dcl[i].Type);
+	return size;
+}
+// Byte size of an FVF vertex (== D3DXGetFVFVertexSize).
+inline u32 xrGetFVFVertexSize(u32 fvf)
+{
+	u32 size = 0;
+	switch (fvf & D3DFVF_POSITION_MASK)
+	{
+	case D3DFVF_XYZ: size += 12; break;
+	case D3DFVF_XYZRHW: size += 16; break;
+	case D3DFVF_XYZB1: size += 16; break;
+	case D3DFVF_XYZB2: size += 20; break;
+	case D3DFVF_XYZB3: size += 24; break;
+	case D3DFVF_XYZB4: size += 28; break;
+	case D3DFVF_XYZB5: size += 32; break;
+	default: break;
+	}
+	if (fvf & D3DFVF_NORMAL) size += 12;
+	if (fvf & D3DFVF_PSIZE) size += 4;
+	if (fvf & D3DFVF_DIFFUSE) size += 4;
+	if (fvf & D3DFVF_SPECULAR) size += 4;
+	// 2-bit format per stage: 0->SIZE2, 1->SIZE3, 2->SIZE4, 3->SIZE1
+	static const u32 texSize[4] = { 8, 12, 16, 4 };
+	const u32 texCount = (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
+	for (u32 t = 0; t < texCount; ++t)
+		size += texSize[(fvf >> (16 + 2 * t)) & 3];
+	return size;
+}
+// FVF -> declaration (== D3DXDeclaratorFromFVF). Only unblended positions are
+// used by the engine; anything else fails loudly instead of silently.
+inline HRESULT xrDeclaratorFromFVF(u32 fvf, D3DVERTEXELEMENT9* dcl)
+{
+	u32 offset = 0;
+	u32 idx = 0;
+	auto push = [&](u8 type, u8 usage, u8 usageIndex)
+	{
+		dcl[idx].Stream = 0;
+		dcl[idx].Offset = (u16)offset;
+		dcl[idx].Type = type;
+		dcl[idx].Method = D3DDECLMETHOD_DEFAULT;
+		dcl[idx].Usage = usage;
+		dcl[idx].UsageIndex = usageIndex;
+		offset += xrDeclTypeSize(type);
+		++idx;
+	};
+	switch (fvf & D3DFVF_POSITION_MASK)
+	{
+	case D3DFVF_XYZ:
+		push(D3DDECLTYPE_FLOAT3, D3DDECLUSAGE_POSITION, 0);
+		break;
+	case D3DFVF_XYZRHW:
+		push(D3DDECLTYPE_FLOAT4, D3DDECLUSAGE_POSITIONT, 0);
+		break;
+	default:
+		return D3DERR_INVALIDCALL;
+	}
+	if (fvf & D3DFVF_NORMAL)
+		push(D3DDECLTYPE_FLOAT3, D3DDECLUSAGE_NORMAL, 0);
+	if (fvf & D3DFVF_PSIZE)
+		push(D3DDECLTYPE_FLOAT1, D3DDECLUSAGE_PSIZE, 0);
+	if (fvf & D3DFVF_DIFFUSE)
+		push(D3DDECLTYPE_D3DCOLOR, D3DDECLUSAGE_COLOR, 0);
+	if (fvf & D3DFVF_SPECULAR)
+		push(D3DDECLTYPE_D3DCOLOR, D3DDECLUSAGE_COLOR, 1);
+	static const u8 texTypes[4] = { D3DDECLTYPE_FLOAT2, D3DDECLTYPE_FLOAT3, D3DDECLTYPE_FLOAT4, D3DDECLTYPE_FLOAT1 };
+	const u32 texCount = (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
+	for (u32 t = 0; t < texCount; ++t)
+		push(texTypes[(fvf >> (16 + 2 * t)) & 3], D3DDECLUSAGE_TEXCOORD, (u8)t);
+	dcl[idx].Stream = 0xFF;
+	dcl[idx].Offset = 0;
+	dcl[idx].Type = D3DDECLTYPE_UNUSED;
+	dcl[idx].Method = 0;
+	dcl[idx].Usage = 0;
+	dcl[idx].UsageIndex = 0;
+	return S_OK;
+}
 struct	VDeclarator	: public svector<D3DVERTEXELEMENT9, MAXD3DDECLLENGTH+1>
 {
 	void	set		(u32 FVF)
 	{
-		D3DXDeclaratorFromFVF	(FVF,begin());
-		resize					(D3DXGetDeclLength(begin())+1);
+		xrDeclaratorFromFVF	(FVF,begin());
+		resize					(xrGetDeclLength(begin())+1);
 	}
 	void	set		(D3DVERTEXELEMENT9* dcl)
 	{
-		resize					(D3DXGetDeclLength(dcl)+1);
+		resize					(xrGetDeclLength(dcl)+1);
 		CopyMemory				(begin(),dcl,size()*sizeof(D3DVERTEXELEMENT9));
 	}
 	void	set		(const VDeclarator& d)
 	{
 		*this		= d;
 	}
-	u32		vertex	()				{ return D3DXGetDeclVertexSize(begin(),0);	}
+	u32		vertex	()				{ return xrGetDeclVertexSize(begin(),0);	}
 	BOOL	equal	(VDeclarator& d)
 	{
 		if (size()!=d.size())	return false;

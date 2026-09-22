@@ -89,10 +89,68 @@ How to use MeshMender:
 #pragma warning( disable : 4786)
 #pragma warning( disable : 4100)
 
-#include <d3dx9.h>
+#include <d3d9.h> // D3DFVF_* only (Windows SDK, not D3DX)
 //#include <map>
 //#include <set>
 //#include <vector>
+
+// Self-contained float3 replacing the legacy MenderVec3 (June 2010 DXSDK).
+// Same layout/semantics; math is inlined so no d3dx9 link dependency.
+struct MenderVec3
+{
+    float x, y, z;
+    MenderVec3() : x(0.0f), y(0.0f), z(0.0f) {}
+    MenderVec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+    bool operator==(const MenderVec3& o) const { return x == o.x && y == o.y && z == o.z; }
+    bool operator!=(const MenderVec3& o) const { return !(*this == o); }
+    MenderVec3 operator+(const MenderVec3& o) const { return MenderVec3(x + o.x, y + o.y, z + o.z); }
+    MenderVec3 operator-(const MenderVec3& o) const { return MenderVec3(x - o.x, y - o.y, z - o.z); }
+    MenderVec3& operator+=(const MenderVec3& o) { x += o.x; y += o.y; z += o.z; return *this; }
+    MenderVec3 operator*(float s) const { return MenderVec3(x * s, y * s, z * s); }
+    MenderVec3& operator*=(float s) { x *= s; y *= s; z *= s; return *this; }
+};
+
+inline MenderVec3 operator*(float s, const MenderVec3& v) { return v * s; }
+
+// Strict lexicographic order for use as an exact-position map key
+// (same absolute-sort semantics the old MenderVec3 operator< had).
+inline bool operator<(const MenderVec3& lhs, const MenderVec3& rhs)
+{
+    if (lhs.x == rhs.x)
+    {
+        if (lhs.y == rhs.y)
+            return lhs.z < rhs.z;
+        return lhs.y < rhs.y;
+    }
+    return lhs.x < rhs.x;
+}
+
+inline float MenderVec3Dot(const MenderVec3* a, const MenderVec3* b)
+{
+    return a->x * b->x + a->y * b->y + a->z * b->z;
+}
+
+inline void MenderVec3Cross(MenderVec3* out, const MenderVec3* a, const MenderVec3* b)
+{
+    out->x = a->y * b->z - a->z * b->y;
+    out->y = a->z * b->x - a->x * b->z;
+    out->z = a->x * b->y - a->y * b->x;
+}
+
+inline float MenderVec3Length(const MenderVec3* v)
+{
+    return _sqrt(v->x * v->x + v->y * v->y + v->z * v->z);
+}
+
+inline MenderVec3* MenderVec3Normalize(MenderVec3* out, const MenderVec3* v)
+{
+    const float len = MenderVec3Length(v);
+    const float inv = (len > 0.0f) ? 1.0f / len : 0.0f;
+    out->x = v->x * inv;
+    out->y = v->y * inv;
+    out->z = v->z * inv;
+    return out;
+}
 
 
 class MeshMender
@@ -104,12 +162,12 @@ class MeshMender
 		class Vertex
 		{
 		public:
-			D3DXVECTOR3 pos;
-			D3DXVECTOR3 normal;
+			MenderVec3 pos;
+			MenderVec3 normal;
 			float       s;
 			float       t;
-			D3DXVECTOR3 tangent;
-			D3DXVECTOR3 binormal;
+			MenderVec3 tangent;
+			MenderVec3 binormal;
 			enum 
 			{
 				FVF = D3DFVF_XYZ |
@@ -244,9 +302,9 @@ class MeshMender
 			size_t indices[3];
 
 			//per face values
-			D3DXVECTOR3 normal;
-			D3DXVECTOR3 tangent;
-			D3DXVECTOR3 binormal;
+			MenderVec3 normal;
+			MenderVec3 tangent;
+			MenderVec3 binormal;
 
 			//helper flags
 			bool handled; 
@@ -261,7 +319,7 @@ class MeshMender
 
 		//each vertex has a set of triangles that contain it.
 		//those triangles are considered to be that vertex's children
-		typedef xr_map<D3DXVECTOR3, TriangleList > VertexChildrenMap;
+		typedef xr_map<MenderVec3, TriangleList > VertexChildrenMap;
 		VertexChildrenMap m_VertexChildrenMap;
 
 		//a neighbor group is defined to be the list of traingles
@@ -306,8 +364,8 @@ class MeshMender
 		void GetGradients( const MeshMender::Vertex& v0,
                            const MeshMender::Vertex& v1,
                            const MeshMender::Vertex& v2,
-                           D3DXVECTOR3& tangent,
-                           D3DXVECTOR3& binormal) const;
+                           MenderVec3& tangent,
+                           MenderVec3& binormal) const;
 
 		void OrthogonalizeTangentsAndBinormals( 
 						xr_vector< Vertex >&   theVerts );
@@ -318,11 +376,11 @@ class MeshMender
 										xr_vector< unsigned int >& theIndices,
 										xr_vector< unsigned int >& mappingNewToOldVert);
 
-		bool TriHasEdge(const D3DXVECTOR3& p0,
-						const D3DXVECTOR3& p1,
-						const D3DXVECTOR3& triA,
-						const D3DXVECTOR3& triB,
-						const D3DXVECTOR3& triC);
+		bool TriHasEdge(const MenderVec3& p0,
+						const MenderVec3& p1,
+						const MenderVec3& triA,
+						const MenderVec3& triB,
+						const MenderVec3& triC);
 
 		bool TriHasEdge(const size_t& p0,
 						const size_t& p1,
@@ -333,17 +391,17 @@ class MeshMender
 		void ProcessNormals(TriangleList& possibleNeighbors,
 							xr_vector< Vertex >&    theVerts,
 							xr_vector< unsigned int >& mappingNewToOldVert,
-							D3DXVECTOR3 workingPosition);
+							MenderVec3 workingPosition);
 		
 		void ProcessTangents(TriangleList& possibleNeighbors,
 								xr_vector< Vertex >&    theVerts,
 								xr_vector< unsigned int >& mappingNewToOldVert,
-								D3DXVECTOR3 workingPosition);
+								MenderVec3 workingPosition);
 		
 		void ProcessBinormals(TriangleList& possibleNeighbors,
 								xr_vector< Vertex >&    theVerts,
 								xr_vector< unsigned int >& mappingNewToOldVert,
-								D3DXVECTOR3 workingPosition);
+								MenderVec3 workingPosition);
 
 		
 		//make any triangle that used the oldIndex use the newIndex instead

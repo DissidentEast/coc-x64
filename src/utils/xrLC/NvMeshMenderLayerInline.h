@@ -1,7 +1,7 @@
 
 #include "xrFace.h"
 
-IC D3DXVECTOR3& cv_vector ( D3DXVECTOR3	&l, const Fvector& r  )
+IC MenderVec3& cv_vector ( MenderVec3	&l, const Fvector& r  )
 {
 	l.x = r.x;
 	l.y = r.y;
@@ -9,7 +9,7 @@ IC D3DXVECTOR3& cv_vector ( D3DXVECTOR3	&l, const Fvector& r  )
 	return l;
 }
 
-IC Fvector&  cv_vector (  Fvector& l, const D3DXVECTOR3	&r  )
+IC Fvector&  cv_vector (  Fvector& l, const MenderVec3	&r  )
 {
 	l.x = r.x;
 	l.y = r.y;

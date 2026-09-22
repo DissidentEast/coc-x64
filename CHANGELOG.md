@@ -1,5 +1,20 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal 7a: mesh mender + decl helpers (2026-09-22)
+
+- Dropped `d3dx9.h` from `common/NvMender2003` (self-contained `MenderVec3`
+  + inline Dot/Cross/Length/Normalize; only `d3d9.h` FVF codes remain).
+= Fixed a latent uninitialized-read in `SetUpFaceVectors` (old hand-rolled
+  normalize multiplied garbage) and three for-scope leaks, found while
+  probe-compiling the file with `cl.exe`.
++ Added D3DX-free `xrDeclaratorFromFVF`/`xrGetFVFVertexSize`/
+  `xrGetDeclLength`/`xrGetDeclVertexSize` (same semantics) to all four
+  `_d3d_extensions.h` copies; ~30 call sites switched (VDeclarator, FVisual,
+  FSkinned, ResourceManagers, all mesh loaders, fluid grid, fmesh).
+= Verified: decl-probe proves byte-identical declarations vs real D3DX9 on
+  14 FVFs; full build 0 errors; boots to menu (stride VERIFYs pass).
+~ Still on D3DX: math, textures, shaders, dxerr, wrapper (next islands).
+
 ## GameSpy removal 6b (2026-09-22)
 
 * Removed the dead online-service layer (service shut down in 2014; CoC is
