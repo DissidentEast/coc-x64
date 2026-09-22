@@ -1,6 +1,8 @@
 # exclude all dot files except .gitignore
 .*
 !.gitignore
+# version stamp required by LuaJIT's msvcbuild.bat (see luajit-2/.relver)
+!.relver
 
 # exclude binaries and temporary files
 bin/
@@ -20,3 +22,10 @@ lua51.dll
 lua51.exp
 lua51.lib
 luajit.exe
+luajit.exp
+luajit.lib
+minilua.exp
+minilua.lib
+buildvm.exp
+buildvm.lib
+*.pdb

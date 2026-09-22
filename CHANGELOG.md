@@ -1,5 +1,21 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## LuaJIT 2.1 + GC64 (2026-09-22)
+
+* Vendor-drop upgrade of the bundled LuaJIT 2.0.4 to upstream v2.1 branch tip;
+  x64 builds now default to GC64 (`ffi.abi('gc64') == true`), lifting the Lua
+  heap from the 2 GB low-address ceiling to the 128 TB space.
+- Deleted the hand-rolled 128 MB low-2GB Lua heap (`xr_alloc.c/.h` plus the
+  `lj_alloc.c`/`msvcbuild.bat` hooks) — its entire reason to exist is gone
+  with GC64; also refreshed the stale DynASM 1.3.0 tooling to the matching
+  1.5.0 set so `buildvm` regenerates cleanly.
+= Fixed 5 new upstream warnings locally (2x C5287 enum casts, 3x C4244
+  narrowing casts); build stays at 0 errors, 0 warnings.
+~ Scripts: `math.mod` -> `math.fmod` and `table.getn(t)` -> `#(t)` (8 lines in
+  4 files) — both 5.0 leftovers were dropped by 2.1 and crashed the menu-level
+  load (`xr_wounded.script:417`). Verified: main-menu boot on the new runtime.
+~ Staging note: the x64 `lua51.dll` now comes out of the v2.1 tree.
+
 ## VS2022 build (2026-09-22) — Release x64, 0 errors, 0 warnings
 
 * Built with Visual Studio 2022 (platform toolset v143, was v120/VS2013);
