@@ -9,12 +9,9 @@
 
 // DXT5 compressor implementation (stb_dxt, public domain). STBD_FABS avoids
 // the CRT fabs/fabsf banned by xrCore/vector.h for engine code.
-#pragma warning(push)
-#pragma warning(disable:4244) // third-party: int->u8 quantization in stb_dxt
 #define STB_DXT_IMPLEMENTATION
 #define STBD_FABS(x) ((x) < 0 ? -(x) : (x))
 #include "../../3rd party/stb/stb_dxt.h"
-#pragma warning(pop)
 
 #ifndef _EDITOR
 #include "dxRenderDeviceRender.h"
@@ -183,18 +180,8 @@ ID3DTexture2D*	TW_LoadTextureFromTexture
 		R_CHK	(S_dst->GetDesc(&ddst));
 		if (dsrc.Format == ddst.Format)
 			R_CHK(xrSurface_Copy(S_dst, S_src));
-		else if (dsrc.Format == D3DFMT_A8R8G8B8 && ddst.Format == D3DFMT_DXT5)
-			R_CHK(xrSurface_CompressDXT5(S_dst, S_src));
-		else if (dsrc.Format == D3DFMT_DXT5 && ddst.Format == D3DFMT_A8R8G8B8)
-			R_CHK(xrSurface_Decompress(S_dst, S_src));
 		else
-		{
-			Msg("! TW_LoadTextureFromTexture: unsupported conversion %d -> %d", dsrc.Format, ddst.Format);
-			S_src->Release();
-			S_dst->Release();
-			T_dst->Release();
-			return NULL;
-		}
+			R_CHK(xrSurface_ConvertBC(S_dst, S_src));
 
 		// Release surfaces
 		_RELEASE				(S_src);
@@ -410,7 +397,7 @@ _DDS:
 
 _DDS_CUBE:
 		{
-			HRESULT const result	=
+			HRESULT const resultCube	=
 				xrDDS_LoadCube(
 					HW.pDevice,
 					S->pointer(),S->length(),
@@ -419,7 +406,7 @@ _DDS_CUBE:
 				);
 			FS.r_close				(S);
 
-			if ( FAILED(result) ) {
+			if ( FAILED(resultCube) ) {
 				Msg					("! Can't load texture '%s'",fn);
 				string_path			temp;
 				R_ASSERT			( FS.exist( temp, "$game_textures$", "ed\\ed_not_existing_texture", ".dds" ) );
@@ -437,11 +424,15 @@ _DDS_CUBE:
 			return					pTextureCUBE;
 		}
 _DDS_2D:
-		{
-			strlwr					(fn);
-			// Load SYS-MEM-surface, bound to device restrictions
-			ID3DTexture2D*		T_sysmem;
-			HRESULT const result	=
+	{
+		strlwr					(fn);
+		// The bump-fallback jumps land here with a fresh S; (re)parse the
+		// header — idempotent for the _DDS path, required for them (else
+		// IMG.format is uninitialized and the dest format is garbage).
+		R_CHK2					(xrDDS_Parse(S->pointer(),S->length(),&IMG),fn);
+		// Load SYS-MEM-surface, bound to device restrictions
+		ID3DTexture2D*		T_sysmem;
+			HRESULT const result2D	=
 				xrDDS_Load2D(
 					HW.pDevice,S->pointer(),S->length(),
 					D3DPOOL_SYSTEMMEM,
@@ -449,7 +440,7 @@ _DDS_2D:
 				);
 			FS.r_close				(S);
 
-			if ( FAILED(result) ) {
+			if ( FAILED(result2D) ) {
 				Msg					("! Can't load texture '%s'",fn);
 				string_path			temp;
 				R_ASSERT			( FS.exist( temp, "$game_textures$", "ed\\ed_not_existing_texture", ".dds" ) );

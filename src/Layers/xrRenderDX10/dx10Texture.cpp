@@ -5,11 +5,12 @@
 #include "stdafx.h"
 #pragma hdrstop
 
-#pragma warning(disable:4995)
-#include <d3dx9.h>
-#pragma warning(default:4995)
+#include "../xrRender/TextureDDS.h" // D3DX-free DDS parsing (was <d3dx9.h>, <D3DX10Tex.h>)
 
-#include <D3DX10Tex.h>
+// DXT compressor implementation (stb_dxt; R1/R2 get theirs from Texture.cpp).
+#define STB_DXT_IMPLEMENTATION
+#define STBD_FABS(x) ((x) < 0 ? -(x) : (x))
+#include "../../3rd party/stb/stb_dxt.h"
 
 #include "../xrRender/dxRenderDeviceRender.h"
 
@@ -125,16 +126,10 @@ IC void	Reduce(UINT& w, UINT& h, int l, int skip)
 
 void				TW_Save	(ID3DTexture2D* T, LPCSTR name, LPCSTR prefix, LPCSTR postfix)
 {
+	// Debug-only helper, no live callers. The D3DX save it used is gone;
+	// report instead of silently dropping the request.
 	string256		fn;		strconcat	(sizeof(fn),fn,name,"_",prefix,"-",postfix);
-	for (int it=0; it<int(xr_strlen(fn)); it++)	
-		if ('\\'==fn[it])	fn[it]	= '_';
-	string256		fn2;	strconcat	(sizeof(fn2),fn2,"debug\\",fn,".dds");
-	Log						("* debug texture save: ",fn2);
-#ifdef USE_DX11
-	R_CHK					(D3DX11SaveTextureToFile(HW.pContext, T, D3DX11_IFF_DDS, fn2));
-#else
-	R_CHK					(D3DX10SaveTextureToFile(T, D3DX10_IFF_DDS, fn2));
-#endif
+	Msg				("! TW_Save (debug helper, not implemented): %s", fn);
 }
 /*
 ID3DTexture2D*	TW_LoadTextureFromTexture
@@ -299,12 +294,26 @@ IC u32 it_height_rev_base(u32 d, u32 s)	{	return	color_rgba	(
 */
 ID3DBaseTexture*	CRender::texture_load(LPCSTR fRName, u32& ret_msize, bool bStaging)
 {
+	// D3DFORMAT -> DXGI_FORMAT for the file formats the engine loads.
+	auto xrDXGI_Format = [](D3DFORMAT f) -> DXGI_FORMAT
+	{
+		switch (f)
+		{
+		case D3DFMT_DXT1: return DXGI_FORMAT_BC1_UNORM;
+		case D3DFMT_DXT2:
+		case D3DFMT_DXT3: return DXGI_FORMAT_BC2_UNORM;
+		case D3DFMT_DXT4:
+		case D3DFMT_DXT5: return DXGI_FORMAT_BC3_UNORM;
+		case D3DFMT_A8R8G8B8: return DXGI_FORMAT_R8G8B8A8_UNORM;
+		case D3DFMT_X8R8G8B8: return DXGI_FORMAT_B8G8R8X8_UNORM;
+		case D3DFMT_L8: return DXGI_FORMAT_R8_UNORM;
+		case D3DFMT_A8: return DXGI_FORMAT_A8_UNORM;
+		default: return DXGI_FORMAT_UNKNOWN;
+		}
+	};
+
 	//	Moved here just to avoid warning
-#ifdef USE_DX11
-	D3DX11_IMAGE_INFO			IMG;
-#else
-	D3DX10_IMAGE_INFO			IMG;
-#endif
+	XR_DDSInfo					IMG;
 	ZeroMemory(&IMG, sizeof(IMG));
 
 	//	Staging control
@@ -337,11 +346,11 @@ ID3DBaseTexture*	CRender::texture_load(LPCSTR fRName, u32& ret_msize, bool bStag
 		{
 			if (strstr(fname,"_bump#"))
 			{
-				R_ASSERT2	(FS.exist(fn,"$game_textures$",	"ed\\ed_dummy_bump#",	".dds"), "ed_dummy_bump#");
-				S						= FS.r_open	(fn);
-				R_ASSERT2				(S, fn);
-				img_size				= S->length	();
-				goto		_DDS_2D;
+			R_ASSERT2	(FS.exist(fn,"$game_textures$",	"ed\\ed_dummy_bump#",	".dds"), "ed_dummy_bump#");
+			S						= FS.r_open	(fn);
+			R_ASSERT2				(S, fn);
+			img_size				= S->length	();
+			goto		_DDS_2D;
 			}
 		
 			R_ASSERT2	(FS.exist(fn,"$game_textures$",	"ed\\ed_dummy_bump",	".dds"),"ed_dummy_bump");
@@ -389,152 +398,378 @@ _DDS:
 #endif // DEBUG
 		img_size				= S->length	();
 		R_ASSERT				(S);
-		//R_CHK2					(D3DXGetImageInfoFromFileInMemory	(S->pointer(),S->length(),&IMG), fn);
-#ifdef USE_DX11
-		R_CHK2 (D3DX11GetImageInfoFromMemory(S->pointer(),S->length(), 0, &IMG, 0), fn);
-#else
-		R_CHK2 (D3DX10GetImageInfoFromMemory(S->pointer(),S->length(), 0, &IMG, 0), fn);
-#endif
-		//if (IMG.ResourceType	== D3DRTYPE_CUBETEXTURE)			goto _DDS_CUBE;
-		if (IMG.MiscFlags & D3D_RESOURCE_MISC_TEXTURECUBE)			goto _DDS_CUBE;
-		else														goto _DDS_2D;
+		R_CHK2					(xrDDS_Parse(S->pointer(), S->length(), &IMG), fn);
+		if (IMG.faces == 6)												goto _DDS_CUBE;
+		else															goto _DDS_2D;
 
 _DDS_CUBE:
 		{
-			//R_CHK(D3DXCreateCubeTextureFromFileInMemoryEx(
-			//	HW.pDevice,
-			//	S->pointer(),S->length(),
-			//	D3DX_DEFAULT,
-			//	IMG.MipLevels,0,
-			//	IMG.Format,
-			//	D3DPOOL_MANAGED,
-			//	D3DX_DEFAULT,
-			//	D3DX_DEFAULT,
-			//	0,&IMG,0,
-			//	&pTextureCUBE
-			//	));
+			DXGI_FORMAT fmt = xrDXGI_Format(IMG.format);
+			if (fmt == DXGI_FORMAT_UNKNOWN)
+				R_CHK2(E_FAIL, fn);
 
-			//	Inited to default by provided default constructor
-#ifdef USE_DX11
-			D3DX11_IMAGE_LOAD_INFO LoadInfo;
-#else
-			D3DX10_IMAGE_LOAD_INFO LoadInfo;
-#endif
-			//LoadInfo.Usage = D3D_USAGE_IMMUTABLE;
+			D3D_USAGE usage;
+			UINT bindFlags;
+			UINT cpuAccess;
 			if (bStaging)
 			{
-				LoadInfo.Usage = D3D_USAGE_STAGING;
-				LoadInfo.BindFlags = 0;
-				LoadInfo.CpuAccessFlags = D3D_CPU_ACCESS_WRITE;
+				usage = D3D_USAGE_STAGING;
+				bindFlags = 0;
+				cpuAccess = D3D_CPU_ACCESS_WRITE;
 			}
 			else
 			{
-				LoadInfo.Usage = D3D_USAGE_DEFAULT;
-				LoadInfo.BindFlags = D3D_BIND_SHADER_RESOURCE;
+				usage = D3D_USAGE_DEFAULT;
+				bindFlags = D3D_BIND_SHADER_RESOURCE;
+				cpuAccess = 0;
 			}
-			
-			LoadInfo.pSrcInfo = &IMG;
 
-#ifdef USE_DX11
-			R_CHK(D3DX11CreateTextureFromMemory(
-				HW.pDevice,
-				S->pointer(),S->length(),
-				&LoadInfo,
-				0,
-				&pTexture2D,
-				0
-				));
-#else
-			R_CHK(D3DX10CreateTextureFromMemory(
-				HW.pDevice,
-				S->pointer(),S->length(),
-				&LoadInfo,
-				0,
-				&pTexture2D,
-				0
-				));
-#endif
+			// Subresources are face-major (D3D11CalcSubresource: mip + face * mips).
+			// Top level is file-verbatim (raw copy, D3DX does not swizzle);
+			// the rest of the full chain is box-generated (all corpus cubes
+			// are single-mip).
+			u32 fullMips = 1;
+			for (u32 w = IMG.width, h = IMG.height; w > 1 || h > 1; w /= 2, h /= 2)
+				++fullMips;
+			const u32 subCount = fullMips * 6;
+			D3D_SUBRESOURCE_DATA* initData = xr_alloc<D3D_SUBRESOURCE_DATA>(subCount);
+			u8** owned = xr_alloc<u8*>(subCount);
+			for (u32 i = 0; i < subCount; ++i)
+				owned[i] = NULL;
+			u8** chains = xr_alloc<u8*>(6 * fullMips);
+			for (u32 i = 0; i < 6 * fullMips; ++i)
+				chains[i] = NULL;
+			const u8* fileBase = (const u8*)S->pointer() + IMG.dataOffset;
+			const u8* src = fileBase;
+			u32 blockBytes = 0, bytesPerPixel = 0;
+			xrDDS_FormatInfo(IMG.format, &blockBytes, &bytesPerPixel);
+			// One face's worth of file bytes (faces are stored face-major).
+			u32 faceBytes = 0;
+			for (u32 m = 0, w = IMG.width, h = IMG.height; m < IMG.mips; ++m)
+			{
+				faceBytes += xrDDS_LevelSize(_max(1u, w), _max(1u, h), blockBytes, bytesPerPixel);
+				w /= 2;
+				h /= 2;
+			}
+			HRESULT hrCube = S_OK;
+			for (u32 f = 0; f < 6 && SUCCEEDED(hrCube); ++f)
+			{
+				// ARGB chain for this face (decoded top + box rest).
+				const u8* faceSrc = fileBase + f * faceBytes;
+				u32 cw = IMG.width, ch = IMG.height;
+				u32 pw = cw, ph = ch;
+				for (u32 m = 0; m < fullMips && SUCCEEDED(hrCube); ++m)
+				{
+					u8* level = xr_alloc<u8>(cw * ch * 4);
+					chains[f * fullMips + m] = level;
+					if (m == 0)
+					{
+						if (!xrDDS_DecodeLevelToARGB(IMG.format, faceSrc,
+								xrDDS_LevelRowBytes(cw, ch, blockBytes, bytesPerPixel),
+								cw, ch, level, cw * 4))
+							hrCube = E_FAIL;
+					}
+					else
+					{
+						xrARGB_BoxLevel(chains[f * fullMips + m - 1], pw * 4, pw, ph,
+							level, cw * 4, cw, ch);
+					}
+					pw = cw;
+					ph = ch;
+					cw = _max(1u, cw / 2);
+					ch = _max(1u, ch / 2);
+				}
+				// Emit file mips verbatim, generate the rest.
+				u32 w = IMG.width, hh = IMG.height;
+				for (u32 m = 0; m < fullMips && SUCCEEDED(hrCube); ++m)
+				{
+					const u32 lw = _max(1u, w), lh = _max(1u, hh);
+					const u32 subIdx = f * fullMips + m;
+					D3D_SUBRESOURCE_DATA* sub = &initData[subIdx];
+					if (m < IMG.mips)
+					{
+						sub->pSysMem = src;
+						sub->SysMemPitch = xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel);
+						sub->SysMemSlicePitch = 0;
+						src += xrDDS_LevelSize(lw, lh, blockBytes, bytesPerPixel);
+					}
+					else if (blockBytes)
+					{
+						u8* enc = xr_alloc<u8>(xrDDS_LevelSize(lw, lh, blockBytes, bytesPerPixel));
+						owned[subIdx] = enc;
+						xrBC_EncodeLevel(IMG.format, chains[f * fullMips + m], lw * 4,
+							lw, lh, enc, xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel));
+						sub->pSysMem = enc;
+						sub->SysMemPitch = xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel);
+						sub->SysMemSlicePitch = 0;
+					}
+				else if (!blockBytes && bytesPerPixel == 1)
+				{
+					// L8/A8 generated tail: collapse the ARGB chain level.
+					u8* flat = xr_alloc<u8>(lw * lh);
+					owned[subIdx] = flat;
+					xrARGB_Collapse(chains[f * fullMips + m], lw * 4, lw, lh, flat, lw,
+						(IMG.format == D3DFMT_A8) ? 3u : 0u);
+					sub->pSysMem = flat;
+					sub->SysMemPitch = lw;
+					sub->SysMemSlicePitch = 0;
+				}
+				else
+				{
+					sub->pSysMem = chains[f * fullMips + m];
+					sub->SysMemPitch = lw * 4;
+					sub->SysMemSlicePitch = 0;
+				}
+					w /= 2;
+					hh /= 2;
+				}
+			}
+			ID3DTexture2D* texCube = NULL;
+			if (SUCCEEDED(hrCube))
+			{
+				D3D_TEXTURE2D_DESC desc;
+				ZeroMemory(&desc, sizeof(desc));
+				desc.Width = IMG.width;
+				desc.Height = IMG.height;
+				desc.MipLevels = fullMips;
+				desc.ArraySize = 6;
+				desc.Format = fmt;
+				desc.SampleDesc.Count = 1;
+				desc.Usage = usage;
+				desc.BindFlags = bindFlags;
+				desc.CPUAccessFlags = cpuAccess;
+				desc.MiscFlags = D3D_RESOURCE_MISC_TEXTURECUBE;
+				hrCube = HW.pDevice->CreateTexture2D(&desc, initData, &texCube);
+			}
+			for (u32 i = 0; i < subCount; ++i)
+				if (owned[i])
+					xr_free(owned[i]);
+			for (u32 i = 0; i < 6 * fullMips; ++i)
+				if (chains[i])
+					xr_free(chains[i]);
+			xr_free(chains);
+			xr_free(owned);
+			xr_free(initData);
+			R_CHK(hrCube);
+			pTexture2D = texCube;
 
 			FS.r_close				(S);
 
 			// OK
-			mip_cnt					= IMG.MipLevels;
+			mip_cnt					= IMG.mips;
 			ret_msize				= calc_texture_size(img_loaded_lod, mip_cnt, img_size);
 			return					pTexture2D;
 		}
 _DDS_2D:
-		{
-			// Check for LMAP and compress if needed
-			strlwr					(fn);
+	{
+		// Check for LMAP and compress if needed
+		strlwr					(fn);
 
+		img_loaded_lod			= get_texture_load_lod(fn);
 
-			// Load   SYS-MEM-surface, bound to device restrictions
-			//ID3DTexture2D*		T_sysmem;
-			//R_CHK2(D3DXCreateTextureFromFileInMemoryEx
-			//	(
-			//	HW.pDevice,S->pointer(),S->length(),
-			//	D3DX_DEFAULT,D3DX_DEFAULT,
-			//	IMG.MipLevels,0,
-			//	IMG.Format,
-			//	D3DPOOL_SYSTEMMEM,
-			//	D3DX_DEFAULT,
-			//	D3DX_DEFAULT,
-			//	0,&IMG,0,
-			//	&T_sysmem
-			//	), fn);
+		// The bump-fallback jumps above land here with a fresh S; (re)parse
+		// the header — idempotent for the _DDS path, required for them.
+		R_CHK2					(xrDDS_Parse(S->pointer(), S->length(), &IMG), fn);
 
-			img_loaded_lod			= get_texture_load_lod(fn);
+		DXGI_FORMAT fmt = xrDXGI_Format(IMG.format);
+			if (fmt == DXGI_FORMAT_UNKNOWN)
+				R_CHK2(E_FAIL, fn);
 
-			//	Inited to default by provided default constructor
-#ifdef USE_DX11
-			D3DX11_IMAGE_LOAD_INFO LoadInfo;
-#else
-			D3DX10_IMAGE_LOAD_INFO LoadInfo;
-#endif
-			//LoadInfo.FirstMipLevel = img_loaded_lod;
-			LoadInfo.Width	= IMG.Width;
-			LoadInfo.Height	= IMG.Height;
-
-			if (img_loaded_lod)
-			{
-				Reduce(LoadInfo.Width, LoadInfo.Height, IMG.MipLevels, img_loaded_lod);
-			}
-
-			//LoadInfo.Usage = D3D_USAGE_IMMUTABLE;
+			D3D_USAGE usage;
+			UINT bindFlags;
+			UINT cpuAccess;
 			if (bStaging)
 			{
-				LoadInfo.Usage = D3D_USAGE_STAGING;
-				LoadInfo.BindFlags = 0;
-				LoadInfo.CpuAccessFlags = D3D_CPU_ACCESS_WRITE;
+				usage = D3D_USAGE_STAGING;
+				bindFlags = 0;
+				cpuAccess = D3D_CPU_ACCESS_WRITE;
 			}
 			else
 			{
-				LoadInfo.Usage = D3D_USAGE_DEFAULT;
-				LoadInfo.BindFlags = D3D_BIND_SHADER_RESOURCE;
+				usage = D3D_USAGE_DEFAULT;
+				bindFlags = D3D_BIND_SHADER_RESOURCE;
+				cpuAccess = 0;
 			}
-			LoadInfo.pSrcInfo = &IMG;
 
-#ifdef USE_DX11
-			R_CHK2(D3DX11CreateTextureFromMemory
-				(
-				HW.pDevice,S->pointer(),S->length(),
-				&LoadInfo,
-				0,
-				&pTexture2D,
-				0
-				), fn);
-#else
-			R_CHK2(D3DX10CreateTextureFromMemory
-				(
-				HW.pDevice,S->pointer(),S->length(),
-				&LoadInfo,
-				0,
-				&pTexture2D,
-				0
-				), fn);
-#endif
+			u32 blockBytes = 0, bytesPerPixel = 0;
+			xrDDS_FormatInfo(IMG.format, &blockBytes, &bytesPerPixel);
+
+		if (IMG.depth > 1)
+		{
+			// Volume texture (e.g. water SBumpVolume). D3D11 wants one
+			// subresource per mip (all slices contiguous); file layout
+			// already matches, so this is a raw copy (D3DX does not swizzle).
+			D3D_SUBRESOURCE_DATA* initData = xr_alloc<D3D_SUBRESOURCE_DATA>(IMG.mips);
+			const u8* src = (const u8*)S->pointer() + IMG.dataOffset;
+			u32 w = IMG.width, hh = IMG.height, dd = IMG.depth;
+			HRESULT hrVol = S_OK;
+			for (u32 m = 0; m < IMG.mips && SUCCEEDED(hrVol); ++m)
+			{
+				const u32 lw = _max(1u, w), lh = _max(1u, hh), ld = _max(1u, dd);
+				const u32 levelSize = xrDDS_LevelSize(lw, lh, blockBytes, bytesPerPixel);
+				D3D_SUBRESOURCE_DATA* dst = &initData[m];
+				dst->pSysMem = src;
+				dst->SysMemPitch = xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel);
+				dst->SysMemSlicePitch = levelSize;
+				src += ld * levelSize;
+				w /= 2;
+				hh /= 2;
+				dd /= 2;
+			}
+				ID3DTexture3D* texVolume = NULL;
+				if (SUCCEEDED(hrVol))
+				{
+					D3D_TEXTURE3D_DESC desc;
+					ZeroMemory(&desc, sizeof(desc));
+					desc.Width = IMG.width;
+					desc.Height = IMG.height;
+					desc.Depth = IMG.depth;
+					desc.MipLevels = IMG.mips;
+					desc.Format = fmt;
+					desc.Usage = usage;
+					desc.BindFlags = bindFlags;
+					desc.CPUAccessFlags = cpuAccess;
+					desc.MiscFlags = 0;
+				hrVol = HW.pDevice->CreateTexture3D(&desc, initData, &texVolume);
+			}
+			xr_free(initData);
+			R_CHK(hrVol);
+				pTexture2D = texVolume;
+
+				FS.r_close				(S);
+				mip_cnt					= IMG.mips;
+				// OK
+				ret_msize				= calc_texture_size(img_loaded_lod, mip_cnt, img_size);
+				return					pTexture2D;
+			}
+
+			// Requested size (LOD). D3DX10/11 behavior, proven by probe:
+			// - requested == file dims: file chain verbatim (+box completion
+			//   to a full chain when the file is short);
+			// - requested smaller: resample the top + box-generate the chain.
+			u32 reqW = IMG.width, reqH = IMG.height;
+			if (img_loaded_lod)
+				Reduce(reqW, reqH, IMG.mips, img_loaded_lod);
+			const bool resample = (reqW != IMG.width || reqH != IMG.height);
+
+			// Full chain length of the requested top.
+			u32 fullMips = 1;
+			for (u32 w = reqW, h = reqH; w > 1 || h > 1; w /= 2, h /= 2)
+				++fullMips;
+
+			D3D_SUBRESOURCE_DATA* initData = xr_alloc<D3D_SUBRESOURCE_DATA>(fullMips);
+			u8** owned = xr_alloc<u8*>(fullMips);
+			for (u32 i = 0; i < fullMips; ++i)
+				owned[i] = NULL;
+			const u8* src = (const u8*)S->pointer() + IMG.dataOffset;
+			// Full ARGB working chain (decoded file top, resampled if needed,
+			// then box-filtered). Backs every generated level.
+			u8** chain = xr_alloc<u8*>(fullMips);
+			for (u32 i = 0; i < fullMips; ++i)
+				chain[i] = NULL;
+			HRESULT hrTex = S_OK;
+			{
+				u8* fileTop = xr_alloc<u8>(IMG.width * IMG.height * 4);
+				if (!xrDDS_DecodeLevelToARGB(IMG.format, src,
+						xrDDS_LevelRowBytes(IMG.width, IMG.height, blockBytes, bytesPerPixel),
+						IMG.width, IMG.height, fileTop, IMG.width * 4))
+					hrTex = E_FAIL;
+				else
+				{
+					chain[0] = xr_alloc<u8>(reqW * reqH * 4);
+					if (resample)
+						xrResample_Bilinear(fileTop, IMG.width * 4, IMG.width, IMG.height,
+							chain[0], reqW * 4, reqW, reqH);
+					else
+						CopyMemory(chain[0], fileTop, reqW * reqH * 4);
+					u32 pw = reqW, ph = reqH;
+					for (u32 m = 1; m < fullMips && SUCCEEDED(hrTex); ++m)
+					{
+						const u32 cw = _max(1u, pw / 2), ch = _max(1u, ph / 2);
+						chain[m] = xr_alloc<u8>(cw * ch * 4);
+						xrARGB_BoxLevel(chain[m - 1], pw * 4, pw, ph, chain[m], cw * 4, cw, ch);
+						pw = cw;
+						ph = ch;
+					}
+				}
+				xr_free(fileTop);
+			}
+			for (u32 m = 0; m < fullMips && SUCCEEDED(hrTex); ++m)
+			{
+				const u32 lw = _max(1u, reqW >> m), lh = _max(1u, reqH >> m);
+				D3D_SUBRESOURCE_DATA* dst = &initData[m];
+				const bool verbatim = !resample && m < IMG.mips;
+				if (verbatim)
+				{
+					// File bytes (raw copy, including D3DX's own R/B quirk).
+					dst->pSysMem = src;
+					dst->SysMemPitch = xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel);
+					dst->SysMemSlicePitch = 0;
+					src += xrDDS_LevelSize(lw, lh, blockBytes, bytesPerPixel);
+				}
+				else if (blockBytes)
+				{
+					// Encode the ARGB chain level (punch-aware DXT1 included).
+					u8* enc = xr_alloc<u8>(xrDDS_LevelSize(lw, lh, blockBytes, bytesPerPixel));
+					owned[m] = enc;
+					xrBC_EncodeLevel(IMG.format, chain[m], lw * 4, lw, lh, enc,
+						xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel));
+					dst->pSysMem = enc;
+					dst->SysMemPitch = xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel);
+					dst->SysMemSlicePitch = 0;
+				}
+			else if (!blockBytes && bytesPerPixel == 1)
+			{
+				// L8/A8 generated (LOD resample or short-chain tail): the
+				// chain is ARGB, the texture is 1 byte/pixel.
+				u8* flat = xr_alloc<u8>(lw * lh);
+				owned[m] = flat;
+				xrARGB_Collapse(chain[m], lw * 4, lw, lh, flat, lw,
+					(IMG.format == D3DFMT_A8) ? 3u : 0u);
+				dst->pSysMem = flat;
+				dst->SysMemPitch = lw;
+				dst->SysMemSlicePitch = 0;
+			}
+			else
+			{
+				// Uncompressed: raw ARGB bytes (D3DX does not swizzle).
+				dst->pSysMem = chain[m];
+				dst->SysMemPitch = lw * 4;
+				dst->SysMemSlicePitch = 0;
+			}
+		}
+		ID3DTexture2D* tex2D = NULL;
+			if (SUCCEEDED(hrTex))
+			{
+				D3D_TEXTURE2D_DESC desc;
+				ZeroMemory(&desc, sizeof(desc));
+				desc.Width = reqW;
+				desc.Height = reqH;
+				desc.MipLevels = fullMips;
+				desc.ArraySize = 1;
+				desc.Format = fmt;
+				desc.SampleDesc.Count = 1;
+				desc.Usage = usage;
+				desc.BindFlags = bindFlags;
+				desc.CPUAccessFlags = cpuAccess;
+				desc.MiscFlags = 0;
+				hrTex = HW.pDevice->CreateTexture2D(&desc, initData, &tex2D);
+			}
+			for (u32 i = 0; i < fullMips; ++i)
+			{
+				if (owned[i])
+					xr_free(owned[i]);
+				if (chain[i])
+					xr_free(chain[i]);
+			}
+			xr_free(chain);
+			xr_free(owned);
+			xr_free(initData);
+			R_CHK(hrTex);
+			pTexture2D = tex2D;
+
 			FS.r_close				(S);
-			mip_cnt					= IMG.MipLevels;
+			mip_cnt					= IMG.mips;
 			// OK
 			ret_msize				= calc_texture_size(img_loaded_lod, mip_cnt, img_size);
 			return					pTexture2D;

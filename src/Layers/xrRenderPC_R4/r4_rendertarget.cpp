@@ -941,19 +941,71 @@ CRenderTarget::CRenderTarget		()
 			t_noise[it]->surface_set	(t_noise_surf[it]);
 
 
-			//	Create noise mipped
+			//	Create noise mipped (CPU point-downsampled mips; was D3DX11FilterTexture)
 			{
-				//	Autogen mipmaps
-				desc.MipLevels = 0;
-				R_CHK( HW.pDevice->CreateTexture2D(&desc, 0, &t_noise_surf_mipped) );
+				//	Count the full chain, then point-pick each level from the last.
+				u32 mw = TEX_jitter, mh = TEX_jitter, mips = 1;
+				while (mw > 1 || mh > 1)
+				{
+					mw = _max(1u, mw / 2);
+					mh = _max(1u, mh / 2);
+					++mips;
+				}
+				desc.MipLevels = mips;
+				D3D_SUBRESOURCE_DATA* mipData = xr_alloc<D3D_SUBRESOURCE_DATA>(mips);
+				u8* mipBits = NULL;
+				u32 mipBytes = 0;
+				for (u32 m = 1, pw = TEX_jitter, ph = TEX_jitter; m < mips; ++m)
+				{
+					pw = _max(1u, pw / 2);
+					ph = _max(1u, ph / 2);
+					mipBytes += pw * ph * 4;
+				}
+				if (mipBytes)
+					mipBits = xr_alloc<u8>(mipBytes);
+				mipData[0].pSysMem = tempData[0];
+				mipData[0].SysMemPitch = TEX_jitter * 4;
+				mipData[0].SysMemSlicePitch = 0;
+				u8* fill = mipBits;
+				for (u32 m = 1, pw = TEX_jitter, ph = TEX_jitter; m < mips; ++m)
+				{
+					const u32 cw = _max(1u, pw / 2), ch = _max(1u, ph / 2);
+					const u8* srcBits;
+					u32 srcPitch, srcW, srcH;
+					if (m == 1)
+					{
+						srcBits = (const u8*)tempData[0];
+						srcPitch = TEX_jitter * 4;
+						srcW = TEX_jitter;
+						srcH = TEX_jitter;
+					}
+					else
+					{
+						srcBits = fill - (pw * ph * 4);
+						srcPitch = pw * 4;
+						srcW = pw;
+						srcH = ph;
+					}
+					for (u32 y = 0; y < ch; ++y)
+					{
+						u8* dst = fill + y * cw * 4;
+						const u8* srow = srcBits + (_min(2 * y, srcH - 1)) * srcPitch;
+						for (u32 x = 0; x < cw; ++x)
+							CopyMemory(dst + 4 * x, srow + (_min(2 * x, srcW - 1)) * 4, 4);
+					}
+					mipData[m].pSysMem = fill;
+					mipData[m].SysMemPitch = cw * 4;
+					mipData[m].SysMemSlicePitch = 0;
+					fill += cw * ch * 4;
+					pw = cw;
+					ph = ch;
+				}
+				R_CHK(HW.pDevice->CreateTexture2D(&desc, mipData, &t_noise_surf_mipped));
+				if (mipBits)
+					xr_free(mipBits);
+				xr_free(mipData);
 				t_noise_mipped = dxRenderDeviceRender::Instance().Resources->_CreateTexture(r2_jitter_mipped);
 				t_noise_mipped->surface_set(t_noise_surf_mipped);
-
-				//	Update texture. Generate mips.
-
-				HW.pContext->CopySubresourceRegion( t_noise_surf_mipped, 0, 0, 0, 0, t_noise_surf[0], 0, 0 );
-
-				D3DX11FilterTexture(HW.pContext, t_noise_surf_mipped, 0, D3DX10_FILTER_POINT);
 			}
 		}
 	}

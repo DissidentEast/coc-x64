@@ -255,6 +255,10 @@ inline void xrResample_Bilinear(const u8* srcBits, u32 srcPitch, u32 sw, u32 sh,
 inline void xrBC_DecodeLevel(D3DFORMAT fmt, const u8* srcBits, u32 srcRowBytes,
                              u8* dstBits, u32 dstPitch, u32 w, u32 h);
 
+// Encodes one ARGB image (BGRA bytes) to BC blocks (see definition below).
+inline void xrBC_EncodeLevel(D3DFORMAT fmt, const u8* srcARGB, u32 srcPitch,
+                             u32 w, u32 h, u8* dstBlocks, u32 dstPitch);
+
 // Decodes one file level to A8R8G8B8 (BGRA bytes). Supports the formats the
 // engine forces to ARGB; returns false for anything else.
 inline bool xrDDS_DecodeLevelToARGB(D3DFORMAT fmt, const u8* srcBits, u32 srcRowBytes,
@@ -370,34 +374,12 @@ inline HRESULT xrDDS_Load2D(IDirect3DDevice9* dev, const void* fileData, u32 fil
                 xrResample_Bilinear(argbScratch, lw * 4, lw, lh, resampleScratch, dw * 4, dw, dh);
                 if (blockBytes)
                 {
-                    if (info.format == D3DFMT_DXT1)
-                        hr = E_FAIL; // punch-through DXT1 has no encoder; no corpus case
+                    // Only DXT1/5 have encoders here (punch-aware DXT1 included).
+                    if (info.format != D3DFMT_DXT5 && info.format != D3DFMT_DXT1)
+                        hr = E_FAIL;
                     else
-                    {
-                        // Encode DXT3/5 from the resampled image.
-                        for (u32 by = 0; by < (dh + 3) / 4 && SUCCEEDED(hr); ++by)
-                            for (u32 bx = 0; bx < (dw + 3) / 4; ++bx)
-                            {
-                                u8 rgba[16][4];
-                                for (u32 y = 0; y < 4; ++y)
-                                {
-                                    const u32 sy = _min(by * 4 + y, dh - 1);
-                                    const u8* srow = resampleScratch + sy * dw * 4;
-                                    for (u32 x = 0; x < 4; ++x)
-                                    {
-                                        const u32 sx = _min(bx * 4 + x, dw - 1);
-                                        const u8* sp = srow + sx * 4;
-                                        u8* dp = rgba[y * 4 + x];
-                                        dp[0] = sp[2];
-                                        dp[1] = sp[1];
-                                        dp[2] = sp[0];
-                                        dp[3] = sp[3];
-                                    }
-                                }
-                                u8* dbl = (u8*)lr.pBits + by * lr.Pitch + bx * 16;
-                                stb_compress_dxt_block(dbl, &rgba[0][0], 1, XR_DXT_HIGHQUAL);
-                            }
-                    }
+                        xrBC_EncodeLevel(info.format, resampleScratch, dw * 4, dw, dh,
+                                         (u8*)lr.pBits, lr.Pitch);
                 }
                 else
                 {
@@ -755,6 +737,183 @@ inline void xrNormalMap_Generate(u32* dst, u32 dstPitchDW, const u32* src, u32 s
     }
 }
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+void stb_compress_dxt_block(unsigned char* dest, const unsigned char* src, int alpha, int mode);
+#ifdef __cplusplus
+}
+#endif
+#define XR_DXT_HIGHQUAL 2
+
+// Box-downsample one ARGB level to half dims (min 1 per axis).
+inline void xrARGB_BoxLevel(const u8* srcBits, u32 srcPitch, u32 sw, u32 sh,
+                            u8* dstBits, u32 dstPitch, u32 dw, u32 dh)
+{
+    for (u32 y = 0; y < dh; ++y)
+    {
+        u8* dst = dstBits + y * dstPitch;
+        const u32 sy0 = _min(2 * y, sh - 1), sy1 = _min(2 * y + 1, sh - 1);
+        for (u32 x = 0; x < dw; ++x)
+        {
+            const u32 sx0 = _min(2 * x, sw - 1), sx1 = _min(2 * x + 1, sw - 1);
+            for (int c = 0; c < 4; ++c)
+            {
+                const u8* s00 = srcBits + sy0 * srcPitch + sx0 * 4 + c;
+                const u8* s10 = srcBits + sy0 * srcPitch + sx1 * 4 + c;
+                const u8* s01 = srcBits + sy1 * srcPitch + sx0 * 4 + c;
+                const u8* s11 = srcBits + sy1 * srcPitch + sx1 * 4 + c;
+                dst[4 * x + c] = (u8)((*s00 + *s10 + *s01 + *s11 + 2) / 4);
+            }
+        }
+    }
+}
+
+// Collapse an ARGB (BGRA bytes) image to one byte per pixel for L8/A8
+// uploads (R/G/B are equal for L8 decodes, alpha holds A8).
+inline void xrARGB_Collapse(const u8* srcARGB, u32 srcPitch, u32 w, u32 h,
+                            u8* dst, u32 dstPitch, u32 byteOffset)
+{
+    for (u32 y = 0; y < h; ++y)
+    {
+        const u8* srow = srcARGB + y * srcPitch;
+        u8* drow = dst + y * dstPitch;
+        for (u32 x = 0; x < w; ++x)
+            drow[x] = srow[4 * x + byteOffset];
+    }
+}
+
+// Encode one ARGB image (BGRA bytes) to BC blocks. DXT1 is punch-aware
+// (transparent texels get index 3); DXT3 carries explicit nibble alpha;
+// DXT5 carries interpolated alpha. (DXT2/4 map to 3/5; nothing else encodes.)
+inline void xrBC_EncodeLevel(D3DFORMAT fmt, const u8* srcARGB, u32 srcPitch,
+                             u32 w, u32 h, u8* dstBlocks, u32 dstPitch)
+{
+    const bool dxt1 = (fmt == D3DFMT_DXT1);
+    const bool dxt3 = (fmt == D3DFMT_DXT2 || fmt == D3DFMT_DXT3);
+    u8 rgba[16][4];
+    for (u32 by = 0; by < (h + 3) / 4; ++by)
+    {
+        for (u32 bx = 0; bx < (w + 3) / 4; ++bx)
+        {
+            for (u32 y = 0; y < 4; ++y)
+            {
+                const u32 sy = _min(by * 4 + y, h - 1);
+                const u8* srow = srcARGB + sy * srcPitch;
+                for (u32 x = 0; x < 4; ++x)
+                {
+                    const u32 sx = _min(bx * 4 + x, w - 1);
+                    const u8* sp = srow + sx * 4;
+                    u8* dp = rgba[y * 4 + x];
+                    dp[0] = sp[2];
+                    dp[1] = sp[1];
+                    dp[2] = sp[0];
+                    dp[3] = sp[3];
+                }
+            }
+            u8* dbl = dstBlocks + by * dstPitch + bx * (dxt1 ? 8 : 16);
+            if (!dxt1 && !dxt3)
+            {
+                stb_compress_dxt_block(dbl, &rgba[0][0], 1, XR_DXT_HIGHQUAL);
+                continue;
+            }
+            if (dxt3)
+            {
+                // Explicit 4-bit alpha + opaque-style color block.
+                for (int i = 0; i < 16; i += 2)
+                    dbl[i / 2] = (u8)(((rgba[i][3] >> 4) & 0xF) | (rgba[i + 1][3] & 0xF0));
+                stb_compress_dxt_block(dbl + 8, &rgba[0][0], 0, XR_DXT_HIGHQUAL);
+                continue;
+            }
+            bool punch = false;
+            for (int i = 0; i < 16; ++i)
+                if (rgba[i][3] < 128)
+                {
+                    punch = true;
+                    break;
+                }
+            if (!punch)
+            {
+                stb_compress_dxt_block(dbl, &rgba[0][0], 0, XR_DXT_HIGHQUAL);
+                continue;
+            }
+            // Endpoints = most distant opaque pair (565), ordered for 1-bit alpha.
+            unsigned short e0 = 0, e1 = 0;
+            {
+                int best = -1;
+                u8 p0[3] = { 0, 0, 0 }, p1[3] = { 0, 0, 0 };
+                for (int i = 0; i < 16; ++i)
+                {
+                    if (rgba[i][3] < 128)
+                        continue;
+                    for (int j = 0; j < 16; ++j)
+                    {
+                        if (rgba[j][3] < 128)
+                            continue;
+                        const int dr = (int)rgba[i][0] - (int)rgba[j][0];
+                        const int dg = (int)rgba[i][1] - (int)rgba[j][1];
+                        const int db = (int)rgba[i][2] - (int)rgba[j][2];
+                        const int d = dr * dr + dg * dg + db * db;
+                        if (d > best)
+                        {
+                            best = d;
+                            p0[0] = rgba[i][0];
+                            p0[1] = rgba[i][1];
+                            p0[2] = rgba[i][2];
+                            p1[0] = rgba[j][0];
+                            p1[1] = rgba[j][1];
+                            p1[2] = rgba[j][2];
+                        }
+                    }
+                }
+                e0 = (unsigned short)(((p0[0] >> 3) << 11) | ((p0[1] >> 2) << 5) | (p0[2] >> 3));
+                e1 = (unsigned short)(((p1[0] >> 3) << 11) | ((p1[1] >> 2) << 5) | (p1[2] >> 3));
+                if (e0 > e1)
+                {
+                    const unsigned short t = e0;
+                    e0 = e1;
+                    e1 = t;
+                }
+            }
+            u8 c0[4], c1[4], c2[4];
+            xrBC_Expand565(e0, c0);
+            xrBC_Expand565(e1, c1);
+            for (int c = 0; c < 4; ++c)
+                c2[c] = (u8)((c0[c] + c1[c]) / 2);
+            u32 idx = 0;
+            for (int i = 0; i < 16; ++i)
+            {
+                u32 sel;
+                if (rgba[i][3] < 128)
+                {
+                    sel = 3;
+                }
+                else
+                {
+                    int d0 = 0, d1 = 0, d2 = 0;
+                    for (int c = 0; c < 3; ++c)
+                    {
+                        const int v = rgba[i][c];
+                        d0 += (v - c0[c]) * (v - c0[c]);
+                        d1 += (v - c1[c]) * (v - c1[c]);
+                        d2 += (v - c2[c]) * (v - c2[c]);
+                    }
+                    sel = (d0 <= d1 && d0 <= d2) ? 0 : ((d1 <= d2) ? 1 : 2);
+                }
+                idx |= sel << (2 * i);
+            }
+            dbl[0] = (u8)e0;
+            dbl[1] = (u8)(e0 >> 8);
+            dbl[2] = (u8)e1;
+            dbl[3] = (u8)(e1 >> 8);
+            dbl[4] = (u8)idx;
+            dbl[5] = (u8)(idx >> 8);
+            dbl[6] = (u8)(idx >> 16);
+            dbl[7] = (u8)(idx >> 24);
+        }
+    }
+}
+
 //--- Surface copy (same format; replaces D3DXLoadSurfaceFromSurface) ---------
 inline HRESULT xrSurface_Copy(IDirect3DSurface9* dst, IDirect3DSurface9* src)
 {
@@ -781,14 +940,14 @@ inline HRESULT xrSurface_Copy(IDirect3DSurface9* dst, IDirect3DSurface9* src)
     return S_OK;
 }
 
-// A8R8G8B8 -> DXT5 (replaces the D3DX compressor inside LoadSurfaceFromSurface).
-// (stb prototype + XR_DXT_HIGHQUAL are declared above, before Load2D.)
-inline HRESULT xrSurface_CompressDXT5(IDirect3DSurface9* dst, IDirect3DSurface9* src)
+// A8R8G8B8 -> DXT1/DXT5 (replaces the D3DX compressor inside LoadSurfaceFromSurface).
+inline HRESULT xrSurface_CompressBC(IDirect3DSurface9* dst, IDirect3DSurface9* src)
 {
     D3DSURFACE_DESC dd, sd;
     if (FAILED(dst->GetDesc(&dd)) || FAILED(src->GetDesc(&sd)))
         return E_FAIL;
-    if (dd.Format != D3DFMT_DXT5 || sd.Format != D3DFMT_A8R8G8B8
+    if ((dd.Format != D3DFMT_DXT1 && dd.Format != D3DFMT_DXT5)
+        || sd.Format != D3DFMT_A8R8G8B8
         || dd.Width != sd.Width || dd.Height != sd.Height)
         return E_FAIL;
     D3DLOCKED_RECT lrD, lrS;
@@ -799,42 +958,22 @@ inline HRESULT xrSurface_CompressDXT5(IDirect3DSurface9* dst, IDirect3DSurface9*
         dst->UnlockRect();
         return E_FAIL;
     }
-    u8 rgba[16][4];
-    for (u32 by = 0; by < (dd.Height + 3) / 4; ++by)
-    {
-        for (u32 bx = 0; bx < (dd.Width + 3) / 4; ++bx)
-        {
-            for (u32 y = 0; y < 4; ++y)
-            {
-                const u32 sy = _min(by * 4 + y, sd.Height - 1);
-                const u8* srow = (const u8*)lrS.pBits + sy * lrS.Pitch;
-                for (u32 x = 0; x < 4; ++x)
-                {
-                    const u32 sx = _min(bx * 4 + x, sd.Width - 1);
-                    const u8* sp = srow + sx * 4;
-                    u8* dp = rgba[y * 4 + x];
-                    dp[0] = sp[2];
-                    dp[1] = sp[1];
-                    dp[2] = sp[0];
-                    dp[3] = sp[3];
-                }
-            }
-            u8* dbl = (u8*)lrD.pBits + by * lrD.Pitch + bx * 16;
-            stb_compress_dxt_block(dbl, &rgba[0][0], 1, XR_DXT_HIGHQUAL);
-        }
-    }
+    xrBC_EncodeLevel(dd.Format, (const u8*)lrS.pBits, lrS.Pitch, dd.Width, dd.Height,
+                     (u8*)lrD.pBits, lrD.Pitch);
     src->UnlockRect();
     dst->UnlockRect();
     return S_OK;
 }
 
-// DXT5 -> A8R8G8B8 (replaces the D3DX decompressor inside LoadSurfaceFromSurface).
-inline HRESULT xrSurface_Decompress(IDirect3DSurface9* dst, IDirect3DSurface9* src)
+// DXT1/2/3/4/5 -> A8R8G8B8 (replaces the D3DX decompressor inside LoadSurfaceFromSurface).
+inline HRESULT xrSurface_DecompressBC(IDirect3DSurface9* dst, IDirect3DSurface9* src)
 {
     D3DSURFACE_DESC dd, sd;
     if (FAILED(dst->GetDesc(&dd)) || FAILED(src->GetDesc(&sd)))
         return E_FAIL;
-    if (dd.Format != D3DFMT_A8R8G8B8 || sd.Format != D3DFMT_DXT5
+    if (dd.Format != D3DFMT_A8R8G8B8
+        || (sd.Format != D3DFMT_DXT1 && sd.Format != D3DFMT_DXT2 && sd.Format != D3DFMT_DXT3
+            && sd.Format != D3DFMT_DXT4 && sd.Format != D3DFMT_DXT5)
         || dd.Width != sd.Width || dd.Height != sd.Height)
         return E_FAIL;
     D3DLOCKED_RECT lrD, lrS;
@@ -845,11 +984,63 @@ inline HRESULT xrSurface_Decompress(IDirect3DSurface9* dst, IDirect3DSurface9* s
         dst->UnlockRect();
         return E_FAIL;
     }
-    xrBC_DecodeLevel(D3DFMT_DXT5, (const u8*)lrS.pBits, lrS.Pitch,
+    xrBC_DecodeLevel(sd.Format, (const u8*)lrS.pBits, lrS.Pitch,
                      (u8*)lrD.pBits, lrD.Pitch, dd.Width, dd.Height);
     src->UnlockRect();
     dst->UnlockRect();
     return S_OK;
+}
+
+// Any supported conversion via an A8R8G8B8 intermediate (BC<->BC included;
+// replaces D3DXLoadSurfaceFromSurface for the mismatched-format case).
+inline HRESULT xrSurface_ConvertBC(IDirect3DSurface9* dst, IDirect3DSurface9* src)
+{
+    D3DSURFACE_DESC dd, sd;
+    if (FAILED(dst->GetDesc(&dd)) || FAILED(src->GetDesc(&sd)))
+        return E_FAIL;
+    if (dd.Width != sd.Width || dd.Height != sd.Height)
+        return E_FAIL;
+    if (dd.Format == sd.Format)
+        return xrSurface_Copy(dst, src);
+    // ARGB source?
+    u32 sBlock = 0, sBpp = 0;
+    if (!xrDDS_FormatInfo(sd.Format, &sBlock, &sBpp))
+        return E_FAIL;
+    u32 dBlock = 0, dBpp = 0;
+    if (!xrDDS_FormatInfo(dd.Format, &dBlock, &dBpp))
+        return E_FAIL;
+    const bool srcARGB = (sBlock == 0), dstARGB = (dBlock == 0);
+    if (srcARGB && !dstARGB)
+    {
+        // Only A8R8G8B8 sources encode (matches the engine's working format).
+        if (sd.Format != D3DFMT_A8R8G8B8)
+            return E_FAIL;
+        return xrSurface_CompressBC(dst, src);
+    }
+    if (!srcARGB && dstARGB)
+    {
+        // Only A8R8G8B8 destinations decode.
+        if (dd.Format != D3DFMT_A8R8G8B8)
+            return E_FAIL;
+        return xrSurface_DecompressBC(dst, src);
+    }
+    if (srcARGB || dstARGB)
+        return E_FAIL;
+    // BC -> BC through an ARGB scratch surface (device-local, same size).
+    IDirect3DDevice9* dev = NULL;
+    if (FAILED(src->GetDevice(&dev)) || !dev)
+        return E_FAIL;
+    IDirect3DSurface9* mid = NULL;
+    HRESULT hr = dev->CreateOffscreenPlainSurface(sd.Width, sd.Height,
+                                                  D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &mid, NULL);
+    dev->Release();
+    if (FAILED(hr))
+        return hr;
+    hr = xrSurface_DecompressBC(mid, src);
+    if (SUCCEEDED(hr))
+        hr = xrSurface_CompressBC(dst, mid);
+    mid->Release();
+    return hr;
 }
 
 //--- DDS writer (debug TW_Save; screenshots use it too) ----------------------

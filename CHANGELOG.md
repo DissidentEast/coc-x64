@@ -1,5 +1,23 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal 7d2: DX10/11 texture pipeline (2026-09-23)
+
+= `dx10Texture.cpp` load (2D/cube/volume, LOD resample + box chain,
+  raw copy), `dx10HW.cpp` device create (`D3D10CreateDeviceAndSwapChain` +
+  `QueryInterface(ID3D10Device1)`), R3/R4 jitter CPU point-mips.
+= Fixed after in-level testing (menu boot was NOT enough): cube
+  subresources are face-major (`f*mips+m`, was transposed — banded sky),
+  cube chains decode their own face (was face 0 everywhere), volumes pass
+  one subresource per mip (was per-slice), L8/A8 generated tails collapse
+  to 1 byte/pixel, bump-fallback jumps parse the header (was zeroed IMG),
+  `TW_LoadTextureFromTexture` converts any format via ARGB (was 3 cases +
+  NULL crash), stb casts + `result` shadowing (0 warnings).
+= Verified: R2 in-level pixel-clean; R4 in-level fixed (same spawn,
+  windowed screenshots) — sky/terrain/water natural, actors/UI/minimap OK.
+~ Known: R3 stops at `dumb.ps` creation (under investigation; R4
+  unaffected); short/corrupt DDS handling in R4 still to be hardened
+  (DX9 falls back to placeholder).
+
 ## D3DX removal 7d1: DX9 texture pipeline (2026-09-22)
 
 + Added `Layers/xrRender/TextureDDS.h`: DDS parse/load (2D/cube/forced

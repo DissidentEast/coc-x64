@@ -349,10 +349,11 @@ void CHW::CreateDevice( HWND m_hWnd, bool move_window )
 										  &FeatureLevel,		
 										  &pContext);
 #else
-   R =  D3DX10CreateDeviceAndSwapChain(   m_pAdapter,
+   R =  D3D10CreateDeviceAndSwapChain(   m_pAdapter,
                                           m_DriverType,
                                           NULL,
                                           createDeviceFlags,
+                                          D3D10_SDK_VERSION,
                                           &sd,
                                           &m_pSwapChain,
 		                                    &pDevice );
@@ -361,8 +362,9 @@ void CHW::CreateDevice( HWND m_hWnd, bool move_window )
    FeatureLevel = D3D_FEATURE_LEVEL_10_0;
    if(!FAILED(R))
    {
-      D3DX10GetFeatureLevel1( pDevice, &pDevice1 );
-	  FeatureLevel = D3D_FEATURE_LEVEL_10_1;
+      // Old code ignored D3DX10GetFeatureLevel1's result too; keep it that way.
+      pDevice->QueryInterface(__uuidof(ID3D10Device1), (void**)&pDevice1);
+ 	  FeatureLevel = D3D_FEATURE_LEVEL_10_1;
    }
    pContext1 = pDevice1;
 #endif
