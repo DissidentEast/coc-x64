@@ -126,10 +126,100 @@ IC void	Reduce(UINT& w, UINT& h, int l, int skip)
 
 void				TW_Save	(ID3DTexture2D* T, LPCSTR name, LPCSTR prefix, LPCSTR postfix)
 {
-	// Debug-only helper, no live callers. The D3DX save it used is gone;
-	// report instead of silently dropping the request.
+	// Debug-only helper, no live callers. Dumps all mips via staging.
 	string256		fn;		strconcat	(sizeof(fn),fn,name,"_",prefix,"-",postfix);
-	Msg				("! TW_Save (debug helper, not implemented): %s", fn);
+	for (int it = 0; it < int(xr_strlen(fn)); it++)
+		if ('\\' == fn[it])	fn[it] = '_';
+	string256		fn2;	strconcat	(sizeof(fn2),fn2,"debug_",fn,".dds");
+	string_path		full;
+	FS.update_path	(full,"$logs$",fn2);
+	Log						("* debug texture save: ",full);
+	if (!T)
+	{
+		Msg					("! TW_Save: null texture %s", fn);
+		return;
+	}
+	D3D_TEXTURE2D_DESC desc;
+	T->GetDesc(&desc);
+	if (desc.ArraySize != 1)
+	{
+		Msg					("! TW_Save: arrays unsupported %s", fn);
+		return;
+	}
+	D3DFORMAT fileFmt = D3DFMT_UNKNOWN;
+	switch (desc.Format)
+	{
+	case DXGI_FORMAT_BC1_UNORM: fileFmt = D3DFMT_DXT1; break;
+	case DXGI_FORMAT_BC2_UNORM: fileFmt = D3DFMT_DXT3; break;
+	case DXGI_FORMAT_BC3_UNORM: fileFmt = D3DFMT_DXT5; break;
+	case DXGI_FORMAT_R8G8B8A8_UNORM: fileFmt = D3DFMT_A8R8G8B8; break;
+	case DXGI_FORMAT_B8G8R8X8_UNORM: fileFmt = D3DFMT_X8R8G8B8; break;
+	case DXGI_FORMAT_R8_UNORM: fileFmt = D3DFMT_L8; break;
+	case DXGI_FORMAT_A8_UNORM: fileFmt = D3DFMT_A8; break;
+	default: break;
+	}
+	u32 blockBytes = 0, bytesPerPixel = 0;
+	if (fileFmt == D3DFMT_UNKNOWN || !xrDDS_FormatInfo(fileFmt, &blockBytes, &bytesPerPixel))
+	{
+		Msg					("! TW_Save: unsupported format %s", fn);
+		return;
+	}
+	IWriter* W = FS.w_open(full);
+	if (!W)
+	{
+		Msg					("! TW_Save: cannot open %s", full);
+		return;
+	}
+	if (!xrDDS_WriteHeader(W, fileFmt, desc.Width, desc.Height, desc.MipLevels))
+	{
+		FS.w_close(W);
+		return;
+	}
+	for (u32 m = 0; m < desc.MipLevels; ++m)
+	{
+		u32 lw = _max(1u, desc.Width >> m), lh = _max(1u, desc.Height >> m);
+		D3D_TEXTURE2D_DESC sd;
+		ZeroMemory(&sd, sizeof(sd));
+		sd.Width = lw;
+		sd.Height = lh;
+		sd.MipLevels = 1;
+		sd.ArraySize = 1;
+		sd.Format = desc.Format;
+		sd.SampleDesc.Count = 1;
+		sd.Usage = D3D_USAGE_STAGING;
+		sd.CPUAccessFlags = D3D_CPU_ACCESS_READ;
+		ID3DTexture2D* staging = NULL;
+		if (FAILED(HW.pDevice->CreateTexture2D(&sd, NULL, &staging)))
+			break;
+		// Single-slice textures only (checked above): subresource == mip.
+#ifdef USE_DX11
+		HW.pContext->CopySubresourceRegion(staging, 0, 0, 0, 0, T, m, NULL);
+#else
+		HW.pDevice->CopySubresourceRegion(staging, 0, 0, 0, 0, T, m, NULL);
+#endif
+		D3D_MAPPED_TEXTURE2D mr;
+#ifdef USE_DX11
+		HRESULT hrMap = HW.pContext->Map(staging, 0, D3D_MAP_READ, 0, &mr);
+#else
+		HRESULT hrMap = staging->Map(0, D3D_MAP_READ, 0, &mr);
+#endif
+		if (SUCCEEDED(hrMap))
+		{
+			const u32 rows = blockBytes ? ((lh + 3) / 4) : lh;
+			const u32 rowBytes = xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel);
+			for (u32 y = 0; y < rows; ++y)
+				W->w((const u8*)mr.pData + y * mr.RowPitch, rowBytes);
+#ifdef USE_DX11
+			HW.pContext->Unmap(staging, 0);
+#else
+			staging->Unmap(0);
+#endif
+		}
+		staging->Release();
+		if (FAILED(hrMap))
+			break;
+	}
+	FS.w_close(W);
 }
 /*
 ID3DTexture2D*	TW_LoadTextureFromTexture

@@ -1,5 +1,22 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal 7d3: screenshot writers (2026-09-23)
+
++ Vendored `stb_image_write.h` (public domain; JPG/BMP via `*_to_func`
+  into engine writers; CRT calls routed to `Memory.*`, no stdio).
+= `r__screenshot.cpp` no longer calls D3DX save/load: DX10/11 thumbs
+  (staging readback + bilinear + BC1 + DDS writer), JPG/BMP (stb),
+  DX9 thumbs/JPG/TGA (same writers + `tga.h`), half-float via exact
+  `xrHalfToFloatArray`; `TW_Save` (DX10) implemented via staging + DDS.
+= `TextureDDS.h`: factored `xrDDS_WriteHeader`, added `xrDDS_SaveLevels`
+  (memory levels) + 24-bit RGB DDS case.
+= Verified: JPG + 128px DDS thumb captured in-level on all four
+  renderers (R1/R2 need fullscreen — DX9 windowed screenshots stay
+  disabled, vanilla parity); DDS round-trip probe byte-exact (8320 B);
+  build 0 errors, 0 warnings.
+~ Note: `small` is `#define`d to `char` by `rpcndr.h` — never use it
+  as an identifier in Windows TUs (found via preprocessor bisection).
+
 ## D3DX removal: R3 10.1 device + shader creation (2026-09-23)
 
 = R3 created `x_4_1` bytecode (whenever the GPU exposes 10.1) but passed

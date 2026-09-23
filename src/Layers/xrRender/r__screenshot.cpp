@@ -4,10 +4,17 @@
 #include "dxRenderDeviceRender.h"
 #include "../xrRender/tga.h"
 #include "../../xrEngine/xrImage_Resampler.h"
+#include "TextureDDS.h" // D3DX-free DDS writer + BC codec + resampler
 
-#if defined(USE_DX10) || defined(USE_DX11)
-#include "d3dx10tex.h"
-#endif	//	USE_DX10
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+// Engine-tracked memory + no CRT stdio (we only use the *_to_func writers).
+#define STBI_WRITE_NO_STDIO
+#define STBIW_MALLOC(sz) Memory.mem_alloc(sz)
+#define STBIW_REALLOC(p, newsz) Memory.mem_realloc((void*)(p), (size_t)(newsz))
+#define STBIW_REALLOC_SIZED(p, oldsz, newsz) Memory.mem_realloc((void*)(p), (size_t)(newsz))
+#define STBIW_FREE(p) (Memory.mem_free((void*)(p)))
+#define STBIW_MEMMOVE(a, b, sz) CopyMemory((a), (b), (sz))
+#include "../../3rd party/stb/stb_image_write.h"
 
 #define	GAMESAVE_SIZE	128
 
@@ -39,6 +46,122 @@ IC void MouseRayFromPoint	( Fvector& direction, int x, int y, Fmatrix& m_CamMat 
 #define SM_FOR_SEND_WIDTH 640
 #define SM_FOR_SEND_HEIGHT 480
 
+//--- D3DX-free image saving (7d3) -------------------------------------------
+// Append-callback target for stb_image_write *_to_func.
+struct xrShotBuf
+{
+	u8* data;
+	u32 size;
+	u32 cap;
+};
+static void xrShot_Append(void* ctx, void* data, int size)
+{
+	xrShotBuf* b = (xrShotBuf*)ctx;
+	if (b->size + (u32)size > b->cap)
+	{
+		const u32 ncap = _max(b->cap * 2, b->size + (u32)size + 4096);
+		u8* ndata = (u8*)xr_realloc(b->data, ncap);
+		if (!ndata)
+			return;
+		b->data = ndata;
+		b->cap = ncap;
+	}
+	CopyMemory(b->data + b->size, data, size);
+	b->size += (u32)size;
+}
+// BGRA -> RGB copy (stb writers want RGB top-down).
+static void xrShot_BGRAtoRGB(const u8* src, u32 srcPitch, u32 w, u32 h, u8* dst)
+{
+	for (u32 y = 0; y < h; ++y)
+	{
+		const u8* srow = src + y * srcPitch;
+		u8* drow = dst + y * w * 3;
+		for (u32 x = 0; x < w; ++x)
+		{
+			drow[3 * x + 0] = srow[4 * x + 2];
+			drow[3 * x + 1] = srow[4 * x + 1];
+			drow[3 * x + 2] = srow[4 * x + 0];
+		}
+	}
+}
+// thumb ARGB image to BC1 DDS (replaces D3DXSaveTextureToMemory DDS).
+static bool xrShot_SaveBC1DDS(IWriter* W, const u8* argb, u32 w, u32 h)
+{
+	if (!W)
+		return false;
+	const u32 rb = xrDDS_LevelRowBytes(w, h, 8, 0);
+	u8* enc = (u8*)xr_malloc(rb * ((h + 3) / 4));
+	xrBC_EncodeLevel(D3DFMT_DXT1, argb, w * 4, w, h, enc, rb);
+	XR_DDSLevel lv;
+	lv.bits = enc;
+	lv.pitch = rb;
+	const bool ok = xrDDS_SaveLevels(W, D3DFMT_DXT1, w, h, 1, &lv);
+	xr_free(enc);
+	return ok;
+}
+
+#if defined(USE_DX10) || defined(USE_DX11)
+// Read back a DEFAULT-usage 2D texture to top-down BGRA (w*4 rows).
+static HRESULT xrShot_ReadbackBGRA(ID3DResource* src, u8** outBits, u32* outW, u32* outH)
+{
+	*outBits = NULL;
+	ID3DTexture2D* srcTex = NULL;
+	HRESULT hr = src->QueryInterface(__uuidof(ID3DTexture2D), (void**)&srcTex);
+	if (FAILED(hr))
+		return hr;
+	D3D_TEXTURE2D_DESC sd;
+	srcTex->GetDesc(&sd);
+	ID3DTexture2D* staging = NULL;
+	D3D_TEXTURE2D_DESC dd;
+	ZeroMemory(&dd, sizeof(dd));
+	dd.Width = sd.Width;
+	dd.Height = sd.Height;
+	dd.MipLevels = 1;
+	dd.ArraySize = 1;
+	dd.Format = sd.Format;
+	dd.SampleDesc.Count = 1;
+	dd.Usage = D3D_USAGE_STAGING;
+	dd.CPUAccessFlags = D3D_CPU_ACCESS_READ;
+	hr = HW.pDevice->CreateTexture2D(&dd, NULL, &staging);
+	if (SUCCEEDED(hr))
+	{
+#ifdef USE_DX11
+		HW.pContext->CopyResource(staging, srcTex);
+#else
+		HW.pDevice->CopyResource(staging, srcTex);
+#endif
+		D3D_MAPPED_TEXTURE2D mr;
+#ifdef USE_DX11
+		hr = HW.pContext->Map(staging, 0, D3D_MAP_READ, 0, &mr);
+#else
+		hr = staging->Map(0, D3D_MAP_READ, 0, &mr);
+#endif
+		if (SUCCEEDED(hr))
+		{
+			u8* bits = (u8*)xr_malloc(sd.Width * sd.Height * 4);
+			for (u32 y = 0; y < sd.Height; ++y)
+				CopyMemory(bits + y * sd.Width * 4, (const u8*)mr.pData + y * mr.RowPitch, sd.Width * 4);
+#ifdef USE_DX11
+			HW.pContext->Unmap(staging, 0);
+#else
+			staging->Unmap(0);
+#endif
+			*outBits = bits;
+			*outW = sd.Width;
+			*outH = sd.Height;
+		}
+		staging->Release();
+	}
+	srcTex->Release();
+	return hr;
+}
+// Downscale BGRA to a thumb ARGB image (replaces D3DXLoadTextureFromTexture).
+static void xrShot_Thumbnail(const u8* bgra, u32 sw, u32 sh, u8* thumb, u32 dw, u32 dh)
+{
+	xrResample_Bilinear(bgra, sw * 4, sw, sh, thumb, dw * 4, dw, dh);
+}
+#endif	//	USE_DX10
+
 #if defined(USE_DX10) || defined(USE_DX11)
 void CRender::ScreenshotImpl	(ScreenshotMode mode, LPCSTR name, CMemoryWriter* memory_writer)
 {
@@ -51,159 +174,101 @@ void CRender::ScreenshotImpl	(ScreenshotMode mode, LPCSTR name, CMemoryWriter* m
 	switch (mode)	
 	{
 		case IRender_interface::SM_FOR_GAMESAVE:
+		{
+			// 128x128 BC1 DDS thumb (was D3DXLoadTextureFromTexture +
+			// D3DXSaveTextureToMemory). Written by game saves (autosave).
+			u8* bgra = NULL;
+			u32 sw = 0, sh = 0;
+			if (SUCCEEDED(xrShot_ReadbackBGRA(pSrcTexture, &bgra, &sw, &sh)))
 			{
-				ID3DTexture2D		*pSrcSmallTexture;
-	
-				D3D_TEXTURE2D_DESC desc;
-				ZeroMemory( &desc, sizeof(desc) );
-				desc.Width = GAMESAVE_SIZE;
-				desc.Height = GAMESAVE_SIZE;
-				desc.MipLevels = 1;
-				desc.ArraySize = 1;
-				desc.Format = DXGI_FORMAT_BC1_UNORM;
-				desc.SampleDesc.Count = 1;
-				desc.Usage = D3D_USAGE_DEFAULT;
-				desc.BindFlags = D3D10_BIND_SHADER_RESOURCE;
-				CHK_DX( HW.pDevice->CreateTexture2D( &desc, NULL, &pSrcSmallTexture ) );
-
-				//	D3DX10_TEXTURE_LOAD_INFO *pLoadInfo
-
-#ifdef USE_DX11
-				CHK_DX(D3DX11LoadTextureFromTexture(HW.pContext, pSrcTexture,
-					NULL, pSrcSmallTexture ));
-#else
-				CHK_DX(D3DX10LoadTextureFromTexture( pSrcTexture,
-					NULL, pSrcSmallTexture ));
-#endif
-
-			// save (logical & physical)
-#if defined(USE_DX10) || defined(USE_DX11)
-			ID3D10Blob*			saved	= 0; // D3DX10/11SaveTextureToMemory (7d migrates to DirectXTex)
-#else
-			ID3DXBuffer*		saved	= 0; // D3DXSave*ToFileInMemory (7d migrates to DirectXTex)
-#endif
-#ifdef USE_DX11
-			HRESULT hr = D3DX11SaveTextureToMemory(HW.pContext, pSrcSmallTexture, D3DX11_IFF_DDS, &saved, 0);
-#else
-			HRESULT hr					= D3DX10SaveTextureToMemory( pSrcSmallTexture, D3DX10_IFF_DDS, &saved, 0);
-			//HRESULT hr					= D3DXSaveTextureToFileInMemory (&saved,D3DXIFF_DDS,texture,0);
-#endif
-			if(hr==D3D_OK)
-			{
-				IWriter*			fs		= FS.w_open	(name); 
-				if (fs)				
+				u8* thumb = (u8*)xr_malloc(GAMESAVE_SIZE * GAMESAVE_SIZE * 4);
+				xrShot_Thumbnail(bgra, sw, sh, thumb, GAMESAVE_SIZE, GAMESAVE_SIZE);
+				IWriter* fs = FS.w_open(name);
+				if (fs)
 				{
-					fs->w				(saved->GetBufferPointer(),(u32)saved->GetBufferSize());
-					FS.w_close			(fs);
+					xrShot_SaveBC1DDS(fs, thumb, GAMESAVE_SIZE, GAMESAVE_SIZE);
+					FS.w_close(fs);
 				}
+				xr_free(thumb);
+				xr_free(bgra);
 			}
-			_RELEASE			(saved);
-
-			// cleanup
-			_RELEASE			(pSrcSmallTexture);
 		}
 		break;
 		case IRender_interface::SM_FOR_MPSENDING:
+		{
+			// 640x480 BC1 DDS (was D3DXLoadTextureFromTexture +
+			// D3DXSaveTextureToMemory). MP-only path.
+			u8* bgra = NULL;
+			u32 sw = 0, sh = 0;
+			if (SUCCEEDED(xrShot_ReadbackBGRA(pSrcTexture, &bgra, &sw, &sh)))
 			{
-				
-				ID3DTexture2D		*pSrcSmallTexture;
-	
-				D3D_TEXTURE2D_DESC desc;
-				ZeroMemory( &desc, sizeof(desc) );
-				desc.Width = SM_FOR_SEND_WIDTH;
-				desc.Height = SM_FOR_SEND_HEIGHT;
-				desc.MipLevels = 1;
-				desc.ArraySize = 1;
-				desc.Format = DXGI_FORMAT_BC1_UNORM;
-				desc.SampleDesc.Count = 1;
-				desc.Usage = D3D_USAGE_DEFAULT;
-				desc.BindFlags = D3D_BIND_SHADER_RESOURCE;
-				CHK_DX( HW.pDevice->CreateTexture2D( &desc, NULL, &pSrcSmallTexture ) );
-
-				//	D3DX10_TEXTURE_LOAD_INFO *pLoadInfo
-
-#ifdef USE_DX11
-				CHK_DX(D3DX11LoadTextureFromTexture(HW.pContext, pSrcTexture,
-					NULL, pSrcSmallTexture ));
-#else
-				CHK_DX(D3DX10LoadTextureFromTexture( pSrcTexture,
-					NULL, pSrcSmallTexture ));
-#endif
-			// save (logical & physical)
-#if defined(USE_DX10) || defined(USE_DX11)
-			ID3D10Blob*			saved	= 0;
-#else
-			ID3DXBuffer*		saved	= 0;
-#endif
-#ifdef USE_DX11
-			HRESULT hr	= D3DX11SaveTextureToMemory(HW.pContext, pSrcSmallTexture, D3DX11_IFF_DDS, &saved, 0);
-#else
-			HRESULT hr					= D3DX10SaveTextureToMemory( pSrcSmallTexture, D3DX10_IFF_DDS, &saved, 0);
-			//HRESULT hr					= D3DXSaveTextureToFileInMemory (&saved,D3DXIFF_DDS,texture,0);
-#endif
-				if(hr==D3D_OK)
+				u8* thumb = (u8*)xr_malloc(SM_FOR_SEND_WIDTH * SM_FOR_SEND_HEIGHT * 4);
+				xrShot_Thumbnail(bgra, sw, sh, thumb, SM_FOR_SEND_WIDTH, SM_FOR_SEND_HEIGHT);
+				if (!memory_writer)
 				{
-					if (!memory_writer)
+					IWriter* fs = FS.w_open(name);
+					if (fs)
 					{
-						IWriter*			fs		= FS.w_open	(name); 
-						if (fs)				
-						{
-							fs->w				(saved->GetBufferPointer(),(u32)saved->GetBufferSize());
-							FS.w_close			(fs);
-						}
-					} else
-					{
-						memory_writer->w		(saved->GetBufferPointer(),(u32)saved->GetBufferSize());
+						xrShot_SaveBC1DDS(fs, thumb, SM_FOR_SEND_WIDTH, SM_FOR_SEND_HEIGHT);
+						FS.w_close(fs);
 					}
 				}
-				_RELEASE			(saved);
-
-				// cleanup
-				_RELEASE			(pSrcSmallTexture);
-				
+				else
+				{
+					xrShot_SaveBC1DDS(memory_writer, thumb, SM_FOR_SEND_WIDTH, SM_FOR_SEND_HEIGHT);
+				}
+				xr_free(thumb);
+				xr_free(bgra);
 			}
-			break;
+		}
+		break;
 		case IRender_interface::SM_NORMAL:
-			{
-				string64			t_stemp;
-				string_path			buf;
+		{
+			// Full-res JPG (was D3DXSaveTextureToMemory JPG).
+			string64			t_stemp;
+			string_path			buf;
 			xr_sprintf			(buf,sizeof(buf),"ss_%s_%s_(%s).jpg",Core.UserName,timestamp(t_stemp),(g_pGameLevel)?g_pGameLevel->name().c_str():"mainmenu");
-#if defined(USE_DX10) || defined(USE_DX11)
-			ID3D10Blob			*saved	= 0;
-#else
-			ID3DXBuffer			*saved	= 0;
-#endif
-#ifdef USE_DX11
-				CHK_DX				(D3DX11SaveTextureToMemory(HW.pContext, pSrcTexture, D3DX11_IFF_JPG, &saved, 0));
-#else
-				CHK_DX				(D3DX10SaveTextureToMemory( pSrcTexture, D3DX10_IFF_JPG, &saved, 0));
-#endif
-				IWriter*		fs	= FS.w_open	("$screenshots$",buf); R_ASSERT(fs);
-				fs->w				(saved->GetBufferPointer(),(u32)saved->GetBufferSize());
-				FS.w_close			(fs);
-				_RELEASE			(saved);
+			u8* bgra = NULL;
+			u32 sw = 0, sh = 0;
+			if (SUCCEEDED(xrShot_ReadbackBGRA(pSrcTexture, &bgra, &sw, &sh)))
+			{
+				u8* rgb = (u8*)xr_malloc(sw * sh * 3);
+				xrShot_BGRAtoRGB(bgra, sw * 4, sw, sh, rgb);
+				xrShotBuf shot = {0};
+				if (stbi_write_jpg_to_func(xrShot_Append, &shot, sw, sh, 3, rgb, 85))
+				{
+					IWriter* fs = FS.w_open("$screenshots$",buf); R_ASSERT(fs);
+					fs->w(shot.data, shot.size);
+					FS.w_close(fs);
+				}
+				xr_free(shot.data);
+				xr_free(rgb);
+				xr_free(bgra);
+			}
 
-				if (strstr(Core.Params,"-ss_tga"))	
-				{ // hq
+			if (strstr(Core.Params,"-ss_tga"))
+			{ // hq
 				xr_sprintf			(buf,sizeof(buf),"ssq_%s_%s_(%s).tga",Core.UserName,timestamp(t_stemp),(g_pGameLevel)?g_pGameLevel->name().c_str():"mainmenu");
-#if defined(USE_DX10) || defined(USE_DX11)
-				ID3D10Blob*			saved	= 0;
-#else
-				ID3DXBuffer*		saved	= 0;
-#endif
-#ifdef USE_DX11
-					CHK_DX				(D3DX11SaveTextureToMemory(HW.pContext, pSrcTexture, D3DX11_IFF_BMP, &saved, 0));
-#else
-					CHK_DX				(D3DX10SaveTextureToMemory( pSrcTexture, D3DX10_IFF_BMP, &saved, 0));
-					//		CHK_DX				(D3DXSaveSurfaceToFileInMemory (&saved,D3DXIFF_TGA,pFB,0,0));
-#endif
-					IWriter*		fs	= FS.w_open	("$screenshots$",buf); R_ASSERT(fs);
-					fs->w				(saved->GetBufferPointer(),(u32)saved->GetBufferSize());
-					FS.w_close			(fs);
-					_RELEASE			(saved);
+				u8* bgraHQ = NULL;
+				u32 hw2 = 0, hh2 = 0;
+				if (SUCCEEDED(xrShot_ReadbackBGRA(pSrcTexture, &bgraHQ, &hw2, &hh2)))
+				{
+					u8* rgbHQ = (u8*)xr_malloc(hw2 * hh2 * 3);
+					xrShot_BGRAtoRGB(bgraHQ, hw2 * 4, hw2, hh2, rgbHQ);
+					xrShotBuf shotHQ = {0};
+					if (stbi_write_bmp_to_func(xrShot_Append, &shotHQ, hw2, hh2, 3, rgbHQ))
+					{
+						IWriter* fs = FS.w_open("$screenshots$",buf); R_ASSERT(fs);
+						fs->w(shotHQ.data, shotHQ.size);
+						FS.w_close(fs);
+					}
+					xr_free(shotHQ.data);
+					xr_free(rgbHQ);
+					xr_free(bgraHQ);
 				}
 			}
-			break;
+		}
+		break;
 		case IRender_interface::SM_FOR_LEVELMAP:
 		case IRender_interface::SM_FOR_CUBEMAP:
 			{
@@ -245,6 +310,61 @@ void CRender::ScreenshotImpl	(ScreenshotMode mode, LPCSTR name, CMemoryWriter* m
 }
 
 #else	//	USE_DX10
+
+// BGRA -> BGR copy (24-bit DDS thumbs; DX9 screenshot path only).
+static void xrShot_BGRAtoBGR(const u8* src, u32 srcPitch, u32 w, u32 h, u8* dst)
+{
+	for (u32 y = 0; y < h; ++y)
+	{
+		const u8* srow = src + y * srcPitch;
+		u8* drow = dst + y * w * 3;
+		for (u32 x = 0; x < w; ++x)
+		{
+			drow[3 * x + 0] = srow[4 * x + 0];
+			drow[3 * x + 1] = srow[4 * x + 1];
+			drow[3 * x + 2] = srow[4 * x + 2];
+		}
+	}
+}
+// IEEE-754 half -> float (replaces D3DXFloat16To32Array; DX9 R2 path only:
+// R1 never samples float rendertargets here).
+#if RENDER != R_R1
+static float xrHalfToFloat(u16 h)
+{
+	const u32 sign = (u32)(h & 0x8000) << 16;
+	const u32 exp = ((u32)h >> 10) & 0x1F;
+	const u32 mant = (u32)h & 0x3FF;
+	u32 f;
+	if (exp == 0)
+	{
+		if (mant == 0)
+			f = sign; // signed zero
+		else
+		{
+			u32 m = mant, e = 0;
+			while ((m & 0x400) == 0)
+			{
+				m <<= 1;
+				++e;
+			}
+			m &= 0x3FF;
+			f = sign | ((127 - 14 - e) << 23) | (m << 13);
+		}
+	}
+	else if (exp == 31)
+		f = sign | 0x7F800000 | (mant << 13); // inf/nan
+	else
+		f = sign | ((exp + 112) << 23) | (mant << 13);
+	float r;
+	CopyMemory(&r, &f, 4);
+	return r;
+}
+static void xrHalfToFloatArray(float* dst, const u16* src, int count)
+{
+	for (int i = 0; i < count; ++i)
+		dst[i] = xrHalfToFloat(src[i]);
+}
+#endif	//	RENDER != R_R1
 
 void CRender::ScreenshotImpl	(ScreenshotMode mode, LPCSTR name, CMemoryWriter* memory_writer)
 {
@@ -312,96 +432,80 @@ void CRender::ScreenshotImpl	(ScreenshotMode mode, LPCSTR name, CMemoryWriter* m
 	switch (mode)	{
 		case IRender_interface::SM_FOR_GAMESAVE:
 			{
-				// texture
-				ID3DTexture2D*	texture	= NULL;
-				hr					= D3DXCreateTexture(HW.pDevice,GAMESAVE_SIZE,GAMESAVE_SIZE,1,0,D3DFMT_DXT1,D3DPOOL_SCRATCH,&texture);
-				if(hr!=D3D_OK)		goto _end_;
-				if(NULL==texture)	goto _end_;
-
-				// resize&convert to surface
-				IDirect3DSurface9*	surface = 0;
-				hr					= texture->GetSurfaceLevel(0,&surface);
-				if(hr!=D3D_OK)		goto _end_;
-				VERIFY				(surface);
-				hr					= D3DXLoadSurfaceFromSurface(surface,0,0,pFB,0,0,D3DX_DEFAULT,0);
-				_RELEASE			(surface);
-				if(hr!=D3D_OK)		goto _end_;
-
-				// save (logical & physical)
-				ID3DXBuffer*		saved	= 0;
-				hr					= D3DXSaveTextureToFileInMemory (&saved,D3DXIFF_DDS,texture,0);
-				if(hr!=D3D_OK)		goto _end_;
-				
-				IWriter*			fs		= FS.w_open	(name); 
-				if (fs)				{
-					fs->w				(saved->GetBufferPointer(),saved->GetBufferSize());
-					FS.w_close			(fs);
+				// 128x128 BC1 DDS thumb (was D3DXCreateTexture DXT1 +
+				// D3DXLoadSurfaceFromSurface + D3DXSaveTextureToFileInMemory).
+				u8* thumb = (u8*)xr_malloc(GAMESAVE_SIZE * GAMESAVE_SIZE * 4);
+				xrResample_Bilinear((const u8*)D.pBits, D.Pitch, Device.dwWidth, Device.dwHeight,
+					thumb, GAMESAVE_SIZE * 4, GAMESAVE_SIZE, GAMESAVE_SIZE);
+				IWriter* fs = FS.w_open(name);
+				if (fs)
+				{
+					xrShot_SaveBC1DDS(fs, thumb, GAMESAVE_SIZE, GAMESAVE_SIZE);
+					FS.w_close(fs);
 				}
-				_RELEASE			(saved);
-
-				// cleanup
-				_RELEASE			(texture);
+				xr_free(thumb);
 			}
 			break;
 		case IRender_interface::SM_FOR_MPSENDING:
 			{
-				// texture
-				ID3DTexture2D*	texture	= NULL;
-				hr					= D3DXCreateTexture(HW.pDevice,SM_FOR_SEND_WIDTH,SM_FOR_SEND_HEIGHT,1,0,D3DFMT_R8G8B8,D3DPOOL_SCRATCH,&texture);
-				if(hr!=D3D_OK)		goto _end_;
-				if(NULL==texture)	goto _end_;
-
-				// resize&convert to surface
-				IDirect3DSurface9*	surface = 0;
-				hr					= texture->GetSurfaceLevel(0,&surface);
-				if(hr!=D3D_OK)		goto _end_;
-				VERIFY				(surface);
-				hr					= D3DXLoadSurfaceFromSurface(surface,0,0,pFB,0,0,D3DX_DEFAULT,0);
-				_RELEASE			(surface);
-				if(hr!=D3D_OK)		goto _end_;
-
-				// save (logical & physical)
-				ID3DXBuffer*		saved	= 0;
-				hr					= D3DXSaveTextureToFileInMemory (&saved,D3DXIFF_DDS,texture,0);
-				if(hr!=D3D_OK)		goto _end_;
-				
+				// 640x480 24-bit DDS (was D3DXCreateTexture R8G8B8 +
+				// D3DXLoadSurfaceFromSurface + D3DXSaveTextureToFileInMemory).
+				u8* thumb = (u8*)xr_malloc(SM_FOR_SEND_WIDTH * SM_FOR_SEND_HEIGHT * 4);
+				xrResample_Bilinear((const u8*)D.pBits, D.Pitch, Device.dwWidth, Device.dwHeight,
+					thumb, SM_FOR_SEND_WIDTH * 4, SM_FOR_SEND_WIDTH, SM_FOR_SEND_HEIGHT);
+				u8* bgr = (u8*)xr_malloc(SM_FOR_SEND_WIDTH * SM_FOR_SEND_HEIGHT * 3);
+				xrShot_BGRAtoBGR(thumb, SM_FOR_SEND_WIDTH * 4,
+					SM_FOR_SEND_WIDTH, SM_FOR_SEND_HEIGHT, bgr);
+				XR_DDSLevel lv;
+				lv.bits = bgr;
+				lv.pitch = SM_FOR_SEND_WIDTH * 3;
 				if (!memory_writer)
 				{
-					IWriter*			fs		= FS.w_open	(name); 
-					if (fs)				{
-						fs->w				(saved->GetBufferPointer(),saved->GetBufferSize());
-						FS.w_close			(fs);
+					IWriter* fs = FS.w_open(name);
+					if (fs)
+					{
+						xrDDS_SaveLevels(fs, D3DFMT_R8G8B8,
+							SM_FOR_SEND_WIDTH, SM_FOR_SEND_HEIGHT, 1, &lv);
+						FS.w_close(fs);
 					}
-				} else
-				{
-					memory_writer->w(saved->GetBufferPointer(),saved->GetBufferSize());
 				}
-		
-				_RELEASE			(saved);
-
-				// cleanup
-				_RELEASE			(texture);
-
+				else
+				{
+					xrDDS_SaveLevels(memory_writer, D3DFMT_R8G8B8,
+						SM_FOR_SEND_WIDTH, SM_FOR_SEND_HEIGHT, 1, &lv);
+				}
+				xr_free(bgr);
+				xr_free(thumb);
 			}break;
 		case IRender_interface::SM_NORMAL:
 			{
+				// Full-res JPG (was D3DXSaveSurfaceToFileInMemory JPG).
 				string64			t_stemp;
 				string_path			buf;
 				xr_sprintf			(buf,sizeof(buf),"ss_%s_%s_(%s).jpg",Core.UserName,timestamp(t_stemp),(g_pGameLevel)?g_pGameLevel->name().c_str():"mainmenu");
-				ID3DXBuffer*		saved	= 0;
-				CHK_DX				(D3DXSaveSurfaceToFileInMemory (&saved,D3DXIFF_JPG,pFB,0,0));
-				IWriter*		fs	= FS.w_open	("$screenshots$",buf); R_ASSERT(fs);
-				fs->w				(saved->GetBufferPointer(),saved->GetBufferSize());
-				FS.w_close			(fs);
-				_RELEASE			(saved);
+				u8* rgb = (u8*)xr_malloc(Device.dwWidth * Device.dwHeight * 3);
+				xrShot_BGRAtoRGB((const u8*)D.pBits, D.Pitch, Device.dwWidth, Device.dwHeight, rgb);
+				xrShotBuf shot = {0};
+				if (stbi_write_jpg_to_func(xrShot_Append, &shot,
+					Device.dwWidth, Device.dwHeight, 3, rgb, 85))
+				{
+					IWriter* fs = FS.w_open("$screenshots$",buf); R_ASSERT(fs);
+					fs->w(shot.data, shot.size);
+					FS.w_close(fs);
+				}
+				xr_free(shot.data);
+				xr_free(rgb);
 				if (strstr(Core.Params,"-ss_tga"))	{ // hq
 					xr_sprintf			(buf,sizeof(buf),"ssq_%s_%s_(%s).tga",Core.UserName,timestamp(t_stemp),(g_pGameLevel)?g_pGameLevel->name().c_str():"mainmenu");
-					ID3DXBuffer*		saved	= 0;
-					CHK_DX				(D3DXSaveSurfaceToFileInMemory (&saved,D3DXIFF_TGA,pFB,0,0));
+					TGAdesc				p;
+					p.format			= IMG_24B;
+					p.scanlenght		= Device.dwWidth*4;
+					p.width				= Device.dwWidth;
+					p.height			= Device.dwHeight;
+					p.data				= D.pBits;
 					IWriter*		fs	= FS.w_open	("$screenshots$",buf); R_ASSERT(fs);
-					fs->w				(saved->GetBufferPointer(),saved->GetBufferSize());
+					p.maketga			(*fs);
 					FS.w_close			(fs);
-					_RELEASE			(saved);
 				}
 			}
 			break;
@@ -545,14 +649,14 @@ void CRender::ScreenshotAsyncEnd(CMemoryWriter &memory_writer)
 	if (Target->rt_Color->fmt == D3DFMT_A16B16G16R16F)
 	{
 		static const int iMaxPixelsInARow = 1024;
-		D3DXFLOAT16*	pPixelElement16 = (D3DXFLOAT16*) pPixel;
+		u16*	pPixelElement16 = (u16*) pPixel;
 
 		FLOAT	tmpArray[4*iMaxPixelsInARow];
 		while(pPixel!=pEnd)
 		{
 			const int iProcessPixels = _min(iMaxPixelsInARow, (s32)(pEnd-pPixel));
 
-			D3DXFloat16To32Array( tmpArray, pPixelElement16, iProcessPixels*4);			
+			xrHalfToFloatArray( tmpArray, pPixelElement16, iProcessPixels*4);			
 
 			for ( int i=0; i<iProcessPixels; ++i)
 			{

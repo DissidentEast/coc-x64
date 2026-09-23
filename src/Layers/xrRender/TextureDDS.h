@@ -1044,6 +1044,89 @@ inline HRESULT xrSurface_ConvertBC(IDirect3DSurface9* dst, IDirect3DSurface9* sr
 }
 
 //--- DDS writer (debug TW_Save; screenshots use it too) ----------------------
+inline bool xrDDS_WriteHeader(IWriter* W, D3DFORMAT fmt, u32 w, u32 h, u32 mips)
+{
+    u32 blockBytes = 0, bytesPerPixel = 0;
+    if (!xrDDS_FormatInfo(fmt, &blockBytes, &bytesPerPixel))
+        return false;
+    u32 magic = XR_DDS_MAGIC;
+    W->w(&magic, 4);
+    XR_DDS_Header hdr;
+    ZeroMemory(&hdr, sizeof(hdr));
+    hdr.dwSize = 124;
+    hdr.dwFlags = 0x1 | 0x2 | 0x4 | 0x1000 | 0x20000; // CAPS|HEIGHT|WIDTH|PIXELFORMAT|MIPMAPCOUNT
+    hdr.dwHeight = h;
+    hdr.dwWidth = w;
+    hdr.dwMipMapCount = mips;
+    hdr.ddspf.dwSize = 32;
+    const bool compressed = (blockBytes != 0);
+    if (compressed)
+    {
+        hdr.ddspf.dwFlags = 0x4; // FOURCC
+        hdr.ddspf.dwFourCC = (fmt == D3DFMT_DXT1) ? 0x31545844
+            : (fmt == D3DFMT_DXT3) ? 0x33545844 : 0x35545844;
+    }
+    else if (fmt == D3DFMT_L8)
+    {
+        hdr.ddspf.dwFlags = 0x20000; // DDPF_LUMINANCE
+        hdr.ddspf.dwRGBBitCount = 8;
+        hdr.ddspf.dwRBitMask = 0xFF;
+    }
+    else if (fmt == D3DFMT_R8G8B8)
+    {
+        hdr.ddspf.dwFlags = 0x40; // RGB, no alpha
+        hdr.ddspf.dwRGBBitCount = 24;
+        hdr.ddspf.dwRBitMask = 0x00FF0000;
+        hdr.ddspf.dwGBitMask = 0x0000FF00;
+        hdr.ddspf.dwBBitMask = 0x000000FF;
+    }
+    else
+    {
+        hdr.ddspf.dwFlags = 0x40 | 0x1; // RGB|ALPHAPIXELS
+        hdr.ddspf.dwRGBBitCount = 32;
+        hdr.ddspf.dwRBitMask = 0x00FF0000;
+        hdr.ddspf.dwGBitMask = 0x0000FF00;
+        hdr.ddspf.dwBBitMask = 0x000000FF;
+        hdr.ddspf.dwABitMask = 0xFF000000;
+    }
+    hdr.dwCaps = 0x1000 | 0x400000; // TEXTURE|MIPMAP
+    W->w(&hdr, sizeof(hdr));
+    return true;
+}
+
+// One file-layout level (rows as stored on disk).
+struct XR_DDSLevel
+{
+    const u8* bits;
+    u32 pitch;
+};
+
+// Writes header + levels (as stored; caller guarantees supported format).
+inline bool xrDDS_SaveLevels(IWriter* W, D3DFORMAT fmt, u32 w, u32 h,
+                             u32 mips, const XR_DDSLevel* levels)
+{
+    if (!W || !levels)
+        return false;
+    u32 blockBytes = 0, bytesPerPixel = 0;
+    if (!xrDDS_FormatInfo(fmt, &blockBytes, &bytesPerPixel))
+        return false;
+    if (!xrDDS_WriteHeader(W, fmt, w, h, mips))
+        return false;
+    u32 lw = w, lh = h;
+    for (u32 m = 0; m < mips; ++m)
+    {
+        lw = _max(1u, lw);
+        lh = _max(1u, lh);
+        const u32 rows = blockBytes ? ((lh + 3) / 4) : lh;
+        const u32 rowBytes = xrDDS_LevelRowBytes(lw, lh, blockBytes, bytesPerPixel);
+        for (u32 y = 0; y < rows; ++y)
+            W->w(levels[m].bits + y * levels[m].pitch, rowBytes);
+        lw /= 2;
+        lh /= 2;
+    }
+    return true;
+}
+
 inline bool xrDDS_Save2D(const char* path, IDirect3DTexture9* tex)
 {
     if (!path || !tex)
@@ -1059,40 +1142,11 @@ inline bool xrDDS_Save2D(const char* path, IDirect3DTexture9* tex)
         return false;
     const u32 mips = tex->GetLevelCount();
     // header
-    u32 magic = XR_DDS_MAGIC;
-    W->w(&magic, 4);
-    XR_DDS_Header h;
-    ZeroMemory(&h, sizeof(h));
-    h.dwSize = 124;
-    h.dwFlags = 0x1 | 0x2 | 0x4 | 0x1000 | 0x20000; // CAPS|HEIGHT|WIDTH|PIXELFORMAT|MIPMAPCOUNT
-    h.dwHeight = desc.Height;
-    h.dwWidth = desc.Width;
-    h.dwMipMapCount = mips;
-    h.ddspf.dwSize = 32;
-    bool compressed = (blockBytes != 0);
-    if (compressed)
+    if (!xrDDS_WriteHeader(W, desc.Format, desc.Width, desc.Height, mips))
     {
-        h.ddspf.dwFlags = 0x4; // FOURCC
-        h.ddspf.dwFourCC = (desc.Format == D3DFMT_DXT1) ? 0x31545844
-            : (desc.Format == D3DFMT_DXT3) ? 0x33545844 : 0x35545844;
+        FS.w_close(W);
+        return false;
     }
-    else if (desc.Format == D3DFMT_L8)
-    {
-        h.ddspf.dwFlags = 0x20000; // DDPF_LUMINANCE
-        h.ddspf.dwRGBBitCount = 8;
-        h.ddspf.dwRBitMask = 0xFF;
-    }
-    else
-    {
-        h.ddspf.dwFlags = 0x40 | 0x1; // RGB|ALPHAPIXELS
-        h.ddspf.dwRGBBitCount = 32;
-        h.ddspf.dwRBitMask = 0x00FF0000;
-        h.ddspf.dwGBitMask = 0x0000FF00;
-        h.ddspf.dwBBitMask = 0x000000FF;
-        h.ddspf.dwABitMask = 0xFF000000;
-    }
-    h.dwCaps = 0x1000 | 0x400000; // TEXTURE|MIPMAP
-    W->w(&h, sizeof(h));
     // levels (as stored; caller guarantees supported format)
     u32 w = desc.Width, hh = desc.Height;
     for (u32 m = 0; m < mips; ++m)
