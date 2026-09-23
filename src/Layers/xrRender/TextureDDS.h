@@ -60,6 +60,9 @@ struct XR_DDSInfo
 };
 
 // Block geometry of a D3DFORMAT. Returns false for unsupported formats.
+// D3DX_DEFAULT replacement (means "keep source format"); D3DX used ((UINT)-1).
+const D3DFORMAT XR_DDS_DEFAULT = (D3DFORMAT)0xFFFFFFFF;
+
 inline bool xrDDS_FormatInfo(D3DFORMAT fmt, u32* blockBytes, u32* bytesPerPixel)
 {
     switch (fmt)

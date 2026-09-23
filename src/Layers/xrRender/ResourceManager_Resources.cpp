@@ -1,7 +1,8 @@
 #include "stdafx.h"
 #pragma hdrstop
 
-#include <d3dcompiler.h> // D3DCOMPILE_* flags (values identical to D3DXSHADER_*)
+#include <d3dcompiler.h> // compile flags
+#include "ShaderCTAB.h" // CTAB lookup for the editor shader path
 
 #ifndef _EDITOR
 #include "../../xrEngine/render.h"
@@ -366,7 +367,7 @@ void	CResourceManager::DBG_VerifyGeoms	()
 	{
 	SGeometry* G					= v_geoms[it];
 
-	D3DVERTEXELEMENT9		test	[MAX_FVF_DECL_SIZE];
+	D3DVERTEXELEMENT9		test	[XR_MAX_FVF_DECL_SIZE];
 	u32						size	= 0;
 	G->dcl->GetDeclaration			(test,(unsigned int*)&size);
 	u32 vb_stride					= xrGetDeclVertexSize	(test,0);
@@ -401,7 +402,7 @@ SGeometry*	CResourceManager::CreateGeom	(D3DVERTEXELEMENT9* decl, IDirect3DVerte
 }
 SGeometry*	CResourceManager::CreateGeom		(u32 FVF, IDirect3DVertexBuffer9* vb, IDirect3DIndexBuffer9* ib)
 {
-	D3DVERTEXELEMENT9	dcl	[MAX_FVF_DECL_SIZE];
+	D3DVERTEXELEMENT9	dcl	[XR_MAX_FVF_DECL_SIZE];
 	CHK_DX				(xrDeclaratorFromFVF(FVF,dcl));
 	SGeometry* g		=  CreateGeom	(dcl,vb,ib);
 	return	g;
@@ -613,10 +614,10 @@ void			CResourceManager::_DeleteConstantList(const SConstantList* L )
 
 #ifdef _EDITOR
 //--------------------------------------------------------------------------------------------------------------
-class	includer				: public ID3DXInclude
+class	includer				: public ID3DInclude
 {
 public:
-	HRESULT __stdcall	Open	(D3DXINCLUDE_TYPE IncludeType, LPCSTR pFileName, LPCVOID pParentData, LPCVOID *ppData, UINT *pBytes)
+	HRESULT __stdcall	Open	(D3D_INCLUDE_TYPE IncludeType, LPCSTR pFileName, LPCVOID pParentData, LPCVOID *ppData, UINT *pBytes)
 	{
 		string_path				pname;
 		strconcat				(sizeof(pname),pname,::Render->getShaderPath(),pFileName);
@@ -668,9 +669,9 @@ SVS*	CResourceManager::_CreateVS		(LPCSTR _name)
 		}
 
 		includer					Includer;
-		LPD3DXBUFFER				pShaderBuf	= NULL;
-		LPD3DXBUFFER				pErrorBuf	= NULL;
-		LPD3DXSHADER_CONSTANTTABLE	pConstants	= NULL;
+		ID3DBlob*					pShaderBuf	= NULL;
+		ID3DBlob*					pErrorBuf	= NULL;
+		const void*					pConstants	= NULL;
 		HRESULT						_hr			= S_OK;
 		string_path					cname;
 		strconcat					(sizeof(cname),cname,::Render->getShaderPath(),_name,".vs");
@@ -699,8 +700,7 @@ SVS*	CResourceManager::_CreateVS		(LPCSTR _name)
 
 		// vertex
 		R_ASSERT2					(fs,cname);
-		_hr = ::Render->shader_compile(name,LPCSTR(fs->pointer()),fs->length(), NULL, &Includer, c_entry, c_target, D3DCOMPILE_DEBUG | D3DCOMPILE_PACK_MATRIX_ROW_MAJOR /*| D3DXSHADER_PREFER_FLOW_CONTROL*/, &pShaderBuf, &pErrorBuf, NULL);
-//		_hr = D3DXCompileShader		(LPCSTR(fs->pointer()),fs->length(), NULL, &Includer, "main", target, D3DCOMPILE_DEBUG | D3DCOMPILE_PACK_MATRIX_ROW_MAJOR, &pShaderBuf, &pErrorBuf, NULL);
+		_hr = ::Render->shader_compile(name,LPCSTR(fs->pointer()),fs->length(), NULL, &Includer, c_entry, c_target, D3DCOMPILE_DEBUG | D3DCOMPILE_PACK_MATRIX_ROW_MAJOR, &pShaderBuf, &pErrorBuf, NULL);
 		FS.r_close					(fs);
 
 		if (SUCCEEDED(_hr))
@@ -710,17 +710,16 @@ SVS*	CResourceManager::_CreateVS		(LPCSTR _name)
 				_hr = HW.pDevice->CreateVertexShader	((DWORD*)pShaderBuf->GetBufferPointer(), &_vs->vs);
 				if (SUCCEEDED(_hr))	
 				{
-					LPCVOID			data		= NULL;
-					_hr	= D3DXFindShaderComment	((DWORD*)pShaderBuf->GetBufferPointer(),MAKEFOURCC('C','T','A','B'),&data,NULL);
-					if (SUCCEEDED(_hr) && data)
+					const void*			ctab		= NULL;
+					_hr	= xrFindShaderCTAB(pShaderBuf->GetBufferPointer(),(u32)pShaderBuf->GetBufferSize(),&ctab);
+					if (SUCCEEDED(_hr) && ctab)
 					{
-						pConstants				= LPD3DXSHADER_CONSTANTTABLE(data);
-						_vs->constants.parse	(pConstants,0x2);
+						_vs->constants.parse	((void*)ctab,0x2);
 					} 
 					else
 					{
 						Log	("! VS: ", _name);
-						Msg	("! D3DXFindShaderComment hr == 0x%08x", _hr);
+						Msg	("! xrFindShaderCTAB hr == 0x%08x", _hr);
 						_hr = E_FAIL;
 					}
 				}
@@ -801,12 +800,11 @@ SPS*	CResourceManager::_CreatePS			(LPCSTR name)
 		if (strstr(data,"main_ps_2_0"))			{ c_target = "ps_2_0"; c_entry = "main_ps_2_0";	}
 
 		// Compile
-		LPD3DXBUFFER				pShaderBuf	= NULL;
-		LPD3DXBUFFER				pErrorBuf	= NULL;
-		LPD3DXSHADER_CONSTANTTABLE	pConstants	= NULL;
+		ID3DBlob*					pShaderBuf	= NULL;
+		ID3DBlob*					pErrorBuf	= NULL;
+		const void*					pConstants	= NULL;
 		HRESULT						_hr			= S_OK;
 		_hr = ::Render->shader_compile	(name,data,size, NULL, &Includer, c_entry, c_target, D3DCOMPILE_DEBUG | D3DCOMPILE_PACK_MATRIX_ROW_MAJOR, &pShaderBuf, &pErrorBuf, NULL);
-		//_hr = D3DXCompileShader		(text,text_size, NULL, &Includer, c_entry, c_target, D3DCOMPILE_DEBUG | D3DCOMPILE_PACK_MATRIX_ROW_MAJOR, &pShaderBuf, &pErrorBuf, NULL);
 		xr_free						(data);
 
 		if (SUCCEEDED(_hr))
@@ -815,17 +813,16 @@ SPS*	CResourceManager::_CreatePS			(LPCSTR name)
 			{
 				_hr = HW.pDevice->CreatePixelShader	((DWORD*)pShaderBuf->GetBufferPointer(), &_ps->ps);
 				if (SUCCEEDED(_hr))	{
-					LPCVOID			data		= NULL;
-					_hr	= D3DXFindShaderComment	((DWORD*)pShaderBuf->GetBufferPointer(),MAKEFOURCC('C','T','A','B'),&data,NULL);
-					if (SUCCEEDED(_hr) && data)
+					const void*			ctab		= NULL;
+					_hr	= xrFindShaderCTAB(pShaderBuf->GetBufferPointer(),(u32)pShaderBuf->GetBufferSize(),&ctab);
+					if (SUCCEEDED(_hr) && ctab)
 					{
-						pConstants				= LPD3DXSHADER_CONSTANTTABLE(data);
-						_ps->constants.parse	(pConstants,0x1);
+						_ps->constants.parse	((void*)ctab,0x1);
 					}
 					else
 					{
 						Log	("! PS: ", name);
-						Msg	("! D3DXFindShaderComment hr == 0x%08x", _hr);
+						Msg	("! xrFindShaderCTAB hr == 0x%08x", _hr);
 						_hr = E_FAIL;
 					}
 				}

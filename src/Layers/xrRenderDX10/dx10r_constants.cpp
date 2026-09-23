@@ -25,10 +25,6 @@ BOOL R_constant_table::parseConstants(ID3DShaderReflectionConstantBuffer* pTable
 	D3D_SHADER_BUFFER_DESC	TableDesc;
 	CHK_DX(pTable->GetDesc(&TableDesc));
 
-	//D3DXSHADER_CONSTANTTABLE* desc	= (D3DXSHADER_CONSTANTTABLE*) _desc;
-	//D3DXSHADER_CONSTANTINFO* it		= (D3DXSHADER_CONSTANTINFO*) (LPBYTE(desc)+desc->ConstantInfo);
-	//LPBYTE					 ptr	= LPBYTE(desc);
-	//for (u32 dwCount = desc->Constants; dwCount; dwCount--,it++)
 	for (u32 i = 0; i < TableDesc.Variables; ++i)
 	{
 		ID3DShaderReflectionVariable* pVar;
@@ -73,7 +69,6 @@ BOOL R_constant_table::parseConstants(ID3DShaderReflectionConstantBuffer* pTable
 		u16		r_type		=	u16(-1);
 
 		// TypeInfo + class
-		//D3DXSHADER_TYPEINFO*	T	= (D3DXSHADER_TYPEINFO*)(ptr+it->TypeInfo);
 		BOOL bSkip					= FALSE;
 		//switch (T->Class)
 		switch (TypeDesc.Class)
@@ -143,47 +138,12 @@ BOOL R_constant_table::parseConstants(ID3DShaderReflectionConstantBuffer* pTable
 			fatal		("Pclass MATRIX_COLUMNS unsupported");
 			break;
 		case D3D10_SVC_STRUCT:
-			fatal		("Pclass D3DXPC_STRUCT unsupported");
+			fatal		("Pclass STRUCT unsupported");
 			break;
 		case D3D10_SVC_OBJECT:
 			{
 				//	TODO: DX10: 
 				VERIFY(!"Implement shader object parsing.");
-				/*
-				switch (T->Type)
-				{
-				case D3DXPT_SAMPLER:
-				case D3DXPT_SAMPLER1D:
-				case D3DXPT_SAMPLER2D:
-				case D3DXPT_SAMPLER3D:
-				case D3DXPT_SAMPLERCUBE:
-				{
-				// ***Register sampler***
-				// We have determined all valuable info, search if constant already created
-				ref_constant	C		=	get	(name);
-				if (!C)	{
-				C					=	xr_new<R_constant>();//.g_constant_allocator.create();
-				C->name				=	name;
-				C->destination		=	RC_dest_sampler;
-				C->type				=	RC_sampler;
-				R_constant_load& L	=	C->samp;
-				L.index				=	u16(r_index	+ ( (destination&1)? 0 : D3DVERTEXTEXTURESAMPLER0 ));
-				L.cls				=	RC_sampler	;
-				table.push_back		(C);
-				} else {
-				R_ASSERT			(C->destination	==	RC_dest_sampler);
-				R_ASSERT			(C->type		==	RC_sampler);
-				R_constant_load& L	=	C->samp;
-				R_ASSERT			(L.index		==	r_index);
-				R_ASSERT			(L.cls			==	RC_sampler);
-				}
-				}
-				break;
-				default:
-				fatal		("Pclass D3DXPC_OBJECT - object isn't of 'sampler' type");
-				break;
-				}
-				*/
 			}
 			bSkip		= TRUE;
 			break;

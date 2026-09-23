@@ -94,8 +94,8 @@ How to use MeshMender:
 //#include <set>
 //#include <vector>
 
-// Self-contained float3 replacing the legacy MenderVec3 (June 2010 DXSDK).
-// Same layout/semantics; math is inlined so no d3dx9 link dependency.
+// Self-contained float3 replacing the legacy MenderVec3.
+// Same layout/semantics; math is inlined so no legacy link dependency.
 struct MenderVec3
 {
     float x, y, z;

@@ -4,9 +4,6 @@
 #include "stdafx.h"
 #pragma hdrstop
 
-#pragma warning(disable:4995)
-#include <d3dx9.h>
-#pragma warning(default:4995)
 #include "HW.h"
 #include "../../xrEngine/XR_IOConsole.h"
 
@@ -431,7 +428,6 @@ void		CHW::CreateDevice		(HWND m_hWnd, bool move_window)
     R_CHK	(pDevice->GetDepthStencilSurface	(&pBaseZB));
     u32	memory									= pDevice->GetAvailableTextureMem	();
     Msg		("*     Texture memory: %d M",		memory/(1024*1024));
-    // D3DXGetDriverLevel was log-only (DDI*100); all supported drivers are DX9+.
     Msg		("*          DDI-level: %2.1f",		9.0f);
 #ifndef _EDITOR
     updateWindowProps							(m_hWnd);

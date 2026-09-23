@@ -1,5 +1,5 @@
 #include "stdafx.h"
-#include "dxerr.h"
+#include "../3rd party/DXERR/dxerr.h" // in-tree DXERR (was legacy dxsdk)
 #include "NET_Common.h"
 #include "net_server.h"
 #include <functional>

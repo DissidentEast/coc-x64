@@ -5,7 +5,7 @@
 #include "os_clipboard.h"
 
 #include <sal.h>
-#include <dxerr.h>
+#include "../3rd party/DXERR/dxerr.h" // in-tree DXERR (was legacy dxsdk)
 
 #pragma warning(push)
 #pragma warning(disable:4995)
@@ -18,10 +18,6 @@
 extern bool shared_str_initialized;
 
 #ifdef __BORLANDC__
-# include "d3d9.h"
-# include "d3dx9.h"
-# include "D3DX_Wrapper.h"
-# pragma comment(lib,"EToolsB.lib")
 # define DEBUG_INVOKE DebugBreak()
 static BOOL bException = TRUE;
 # define USE_BUG_TRAP

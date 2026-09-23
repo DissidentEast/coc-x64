@@ -14,9 +14,9 @@ public CCameraBase,
 public pureRender,
 public IInputReceiver
 {
-D3DXMATRIX g_matPosition;
-D3DXVECTOR3 g_vecVelocity;
-D3DXVECTOR3 g_vecAngularVelocity;
+Fmatrix g_matPosition;
+Fvector g_vecVelocity;
+Fvector g_vecAngularVelocity;
 Fvector savedP,savedD,savedN;
 ECameraStyle savedStyle;
 Flags32 savedDF;

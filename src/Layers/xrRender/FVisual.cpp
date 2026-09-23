@@ -5,10 +5,6 @@
 #include "stdafx.h"
 #pragma hdrstop
 
-#pragma warning(disable:4995)
-#include <d3dx9.h>
-#pragma warning(default:4995)
-
 #include "../../xrEngine/fmesh.h"
 #include "fvisual.h"
 
@@ -39,7 +35,7 @@ void Fvisual::Load		(const char* N, IReader *data, u32 dwFlags)
 {
 	dxRender_Visual::Load		(N,data,dwFlags);
 
-	D3DVERTEXELEMENT9	dcl		[MAX_FVF_DECL_SIZE];
+	D3DVERTEXELEMENT9	dcl		[XR_MAX_FVF_DECL_SIZE];
 	D3DVERTEXELEMENT9*	vFormat	= 0;
 	dwPrimitives				= 0;
 	BOOL				loaded_v=false;

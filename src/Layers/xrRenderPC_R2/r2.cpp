@@ -585,7 +585,6 @@ void	CRender::Statistics	(CGameFont* _F)
 }
 
 /////////
-#pragma comment(lib,"d3dx9.lib")
 #pragma comment(lib,"d3dcompiler.lib") // D3DCompile/D3DDisassemble
 static HRESULT create_shader				(
 		LPCSTR const	pTarget,

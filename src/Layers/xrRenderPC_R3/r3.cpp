@@ -13,8 +13,6 @@
 
 #include "..\xrRenderDX10\3DFluid\dx103DFluidManager.h"
 
-#include "D3DX10Core.h"
-
 CRender										RImplementation;
 
 //////////////////////////////////////////////////////////////////////////
@@ -719,14 +717,6 @@ void	CRender::Statistics	(CGameFont* _F)
 static inline bool match_shader_id		( LPCSTR const debug_shader_id, LPCSTR const full_shader_id, FS_FileSet const& file_set, string_path& result );
 
 /////////
-#pragma comment(lib,"d3dx9.lib")
-/*
-extern "C"
-{
-LPCSTR WINAPI	D3DXGetPixelShaderProfile	(LPDIRECT3DDEVICE9  pDevice);
-LPCSTR WINAPI	D3DXGetVertexShaderProfile	(LPDIRECT3DDEVICE9	pDevice);
-};
-*/
 static HRESULT create_shader				(
 		LPCSTR const	pTarget,
 		DWORD const*	buffer,
@@ -821,7 +811,7 @@ static HRESULT create_shader				(
 		else
 		{
 			Log			("! VS: ", file_name);
-			Msg			("! D3DXFindShaderComment hr == 0x%08x", _result);
+			Msg			("! D3DReflectShader hr == 0x%08x", _result);
 		}
 	}
 	else if (pTarget[0] == 'g') {
@@ -865,7 +855,6 @@ static HRESULT create_shader				(
 	{
 		ID3DBlob*		pDisasm	= 0;
 		D3DDisassemble	(buffer, buffer_size, FALSE, 0, &pDisasm );
-		//D3DXDisassembleShader		(LPDWORD(code->GetBufferPointer()), FALSE, 0, &disasm );
 		string_path		dname;
 		strconcat		(sizeof(dname),dname,"disasm\\",file_name,('v'==pTarget[0])?".vs":('p'==pTarget[0])?".ps":".gs" );
 		IWriter*		W		= FS.w_open("$logs$",dname);

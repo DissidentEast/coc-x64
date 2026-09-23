@@ -1130,7 +1130,6 @@ void CRender::render_sun				()
                                                     0.f,		0.f,					1.f, 0.f,
                                         -2.f*boxX/boxWidth,		-2.f*boxY/boxHeight,	0.f, 1.f );
         m_LightViewProj.mulB_44(trapezoidUnitCube);
-        //D3DXMatrixMultiply( &trapezoid_space, &trapezoid_space, &trapezoidUnitCube );
         FPU::m24r					();
     }
 

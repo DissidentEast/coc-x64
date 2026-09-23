@@ -7,13 +7,9 @@
 #include "resource.h"
 #include "dbghelp.h"
 
-#include "dxerr.h"
+#include "../3rd party/DXERR/dxerr.h" // in-tree DXERR (was legacy dxsdk)
 
 #ifdef __BORLANDC__
-#include "d3d9.h"
-#include "d3dx9.h"
-#include "D3DX_Wrapper.h"
-#pragma comment (lib,"EToolsB.lib")
 static BOOL bException = TRUE;
 #else
 static BOOL bException = FALSE;

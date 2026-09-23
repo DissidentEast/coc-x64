@@ -14,8 +14,6 @@
 #include "../xrRenderDX10/3DFluid/dx103DFluidManager.h"
 #include "../xrRender/ShaderResourceTraits.h"
 
-#include "D3DX10Core.h"
-
 CRender										RImplementation;
 
 //////////////////////////////////////////////////////////////////////////
@@ -730,14 +728,6 @@ void	CRender::Statistics	(CGameFont* _F)
 }
 
 /////////
-#pragma comment(lib,"d3dx9.lib")
-/*
-extern "C"
-{
-LPCSTR WINAPI	D3DXGetPixelShaderProfile	(LPDIRECT3DDEVICE9  pDevice);
-LPCSTR WINAPI	D3DXGetVertexShaderProfile	(LPDIRECT3DDEVICE9	pDevice);
-};
-*/
 
 void CRender::addShaderOption(const char* name, const char* value)
 {
@@ -745,7 +735,7 @@ void CRender::addShaderOption(const char* name, const char* value)
 	m_ShaderOptions.push_back(macro);
 }
 
-// XXX nitrocaster: workaround to eliminate conflict between different GUIDs from DXSDK/Windows SDK
+// XXX nitrocaster: workaround to eliminate conflict between different GUIDs from legacy/Windows SDK
 // 0a233719-3960-4578-9d7c-203b8b1d9cc1
 static const GUID guidShaderReflection =
 {0x0a233719, 0x3960, 0x4578, {0x9d, 0x7c, 0x20, 0x3b, 0x8b, 0x1d, 0x9c, 0xc1}};
@@ -871,7 +861,7 @@ static HRESULT create_shader				(
 		else
 		{
 			Log			("! VS: ", file_name);
-			Msg			("! D3DXFindShaderComment hr == 0x%08x", _result);
+			Msg			("! D3DReflectShader hr == 0x%08x", _result);
 		}
 	}
 	else if (pTarget[0] == 'g') {
@@ -961,15 +951,14 @@ static HRESULT create_shader				(
 
 	if ( disasm )
 	{
-		ID3DBlob*		disasm	= 0;
-		D3DDisassemble	(buffer, buffer_size, FALSE, 0, &disasm );
-		//D3DXDisassembleShader		(LPDWORD(code->GetBufferPointer()), FALSE, 0, &disasm );
+		ID3DBlob*		pDisasm	= 0;
+		D3DDisassemble	(buffer, buffer_size, FALSE, 0, &pDisasm );
 		string_path		dname;
 		strconcat		(sizeof(dname),dname,"disasm\\",file_name,('v'==pTarget[0])?".vs":('p'==pTarget[0])?".ps":".gs" );
 		IWriter*		W		= FS.w_open("$logs$",dname);
-		W->w			(disasm->GetBufferPointer(),(u32)disasm->GetBufferSize());
+		W->w			(pDisasm->GetBufferPointer(),(u32)pDisasm->GetBufferSize());
 		FS.w_close		(W);
-		_RELEASE		(disasm);
+		_RELEASE		(pDisasm);
 	}
 
 	return				_result;

@@ -156,6 +156,9 @@ inline u32 xrGetFVFVertexSize(u32 fvf)
 }
 // FVF -> declaration (== D3DXDeclaratorFromFVF). Only unblended positions are
 // used by the engine; anything else fails loudly instead of silently.
+// Array size for D3DVERTEXELEMENT9 declaration buffers
+// (== MAX_FVF_DECL_SIZE == MAXD3DDECLLENGTH + 1 for END).
+enum { XR_MAX_FVF_DECL_SIZE = 64 + 1 };
 inline HRESULT xrDeclaratorFromFVF(u32 fvf, D3DVERTEXELEMENT9* dcl)
 {
     u32 offset = 0;

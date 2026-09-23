@@ -1,5 +1,26 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal 7e: final purge (2026-09-23)
+
+- Deleted `sdk/include/dxsdk/` (22 headers) + vendored `d3dx9/10/11`,
+  `d3dxof`, `DxErr` lib binaries (x86+x64). The x64 game no longer
+  touches the legacy SDK: no includes, no symbols, no libs, no paths.
+= Rain math off D3DX (`r3_R_rain`/`r4_R_rain` via proven `SunTSM.h`;
+  `D3DXMATRIX` decls/casts gone), editor shader path on `ID3DInclude`/
+  `ID3DBlob`/`xrFindShaderCTAB`, `D3DX_DEFAULT` const, half/float + log
+  cleanups, `XR_MAX_FVF_DECL_SIZE` (was `MAX_FVF_DECL_SIZE` from d3dx9.h).
+= `dxerr.h` retargeted to in-tree `3rd party/DXERR`; dropped
+  `d3dx9/10/11.lib` + `dxerr.lib` refs, dead lib pragmas, `DXSDK_DIR`/
+  `dxsdk`/`Lib\\x86` paths (game projects + `Common.props`).
+= Verified: full clean rebuild 30/0 (no dxsdk on disk — any leftover
+  reference would be a hard error); all four renderers menu-boot.
+~ Deferred (Win32-only, untouched): editors, ETools, xrLC*, plugins,
+  `D3DX_Wrapper.h`, `xrCoreStatic.vcxproj` paths. `sdk/include/jpeg`,
+  CxImage, libjpeg, oalib, nvapi stay (live x64).
+~ Note: this forced the first full rebuild in a while, which surfaced
+  ~550 pre-existing warnings in untouched files (blender headers, smap,
+  stream_reader...). None are from this phase; left as-is.
+
 ## D3DX removal 7d3: screenshot writers (2026-09-23)
 
 + Vendored `stb_image_write.h` (public domain; JPG/BMP via `*_to_func`

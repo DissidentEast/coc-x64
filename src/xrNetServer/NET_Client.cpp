@@ -10,7 +10,7 @@
 #pragma warning(push)
 #pragma warning(disable:4995)
 #include <malloc.h>
-#include "dxerr.h"
+#include "../3rd party/DXERR/dxerr.h" // in-tree DXERR (was legacy dxsdk)
 
 //#pragma warning(pop)
 
