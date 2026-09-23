@@ -24,13 +24,6 @@
 #ifndef LUABIND_CONFIG_HPP_INCLUDED
 #define LUABIND_CONFIG_HPP_INCLUDED
 
-// PHASE 8 COEXISTENCE SHIM (delete with luabind at the end of Phase 8):
-// Boost 1.30 uses std::auto_ptr (removed in C++17) in get_pointer.hpp.
-// luabind itself uses its own luabind::auto_ptr, so aliasing std::auto_ptr
-// to unique_ptr only satisfies boost's const-ref get_pointer overload.
-#include <memory>
-namespace std { template <typename T> using auto_ptr = std::unique_ptr<T>; }
-
 #if defined(__GNUC__) && __GNUC__ < 3
 #	define BOOST_NO_STRINGSTREAM
 #endif

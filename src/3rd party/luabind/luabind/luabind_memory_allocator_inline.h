@@ -48,9 +48,7 @@ typename MEMORY_ALLOCATOR::const_pointer MEMORY_ALLOCATOR::address		(const_refer
 }
 
 TEMPLATE_SPECIALIZATION
-// (Phase 8: default arg lives on the declaration in luabind_memory_allocator.h;
-// repeating it here is C2572 under the conformant compiler.)
-typename MEMORY_ALLOCATOR::pointer MEMORY_ALLOCATOR::allocate			(size_type const n, void const* const p) const
+typename MEMORY_ALLOCATOR::pointer MEMORY_ALLOCATOR::allocate			(size_type const n, void const* const p=0) const
 {
 	pointer			result = (pointer)call_allocator(p,n*sizeof(T));
 	if (!n)

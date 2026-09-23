@@ -18,9 +18,8 @@
     <IncludePath>$(SolutionDir)..\src\3rd party;$(IncludePath);$(xrSdkDir)include;$(xrSdkDir)include\OpenAutomate;$(xrSdkDir)include\nvapi</IncludePath>
     <OutDir>$(xrGameDir)bin_dbg\</OutDir>
   </PropertyGroup>
-    <ItemDefinitionGroup>
+  <ItemDefinitionGroup>
     <ClCompile>
-      <LanguageStandard>stdcpp17</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <BufferSecurityCheck>false</BufferSecurityCheck>
       <Optimization>Full</Optimization>

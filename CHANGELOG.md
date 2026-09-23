@@ -1,31 +1,5 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
-## Script migration 8a: foundation - sol2 vendored, C++17 (2026-09-23)
-
-+ Vendored sol2 v3.3.1 single header (`src/3rd party/sol2/sol.hpp`,
-  amalgamated locally from tag `v3.3.1`/commit `dca62a0` via `single.py`;
-  upstream's version macro still reads 3.2.3). MIT license (LICENSE in
-  repo clone; see ThePhD/sol2).
-* Whole game bumped to C++17 (`LanguageStandard` in `src/Common.props`;
-  was v143-default C++14). Required by sol2 v3.
-= Conformance fixes the stricter compiler demanded (all permanent
-  except the two marked COEXISTENCE, which die with luabind):
-  `xr_map/xr_multimap` allocator `pair<K,V>` -> `pair<const K,V>`
-  (`_stl_extensions.h`); dropped repeated default args on out-of-line
-  definitions (`associative_vector`, `data_storage_double_linked_list`,
-  `quadtree`, luabind's own `memory_allocator` [COEXISTENCE]);
-  dependent-base names qualified (`a_star.h`, `path_manager_level*`,
-  `path_manager_solver*`, `action_planner*.h` + member-typedef pattern);
-  `bind1st/mem_fun` -> lambdas (`game_sv_teamdeathmatch.cpp`,
-  `xrServer.cpp`); `std::auto_ptr`->`unique_ptr` alias for Boost 1.30's
-  `get_pointer.hpp` (`luabind/config.hpp` [COEXISTENCE]).
-= Verified: full solution Release|x64 green with zero errors, all four
-  renderers menu-boot on the C++17 binaries.
-~ Tooling notes: `vs_build.py` always builds the full solution (ignores
-  `--project`); single-project MCP builds can target the wrong platform
-  (clobbered `CxImage.lib` with Win32 once — recovered). Prefer full
-  solution builds + `dumpbin /LINKERMEMBER` bitness checks.
-
 ## D3DX removal 7e: final purge (2026-09-23)
 
 - Deleted `sdk/include/dxsdk/` (22 headers) + vendored `d3dx9/10/11`,
