@@ -22,6 +22,7 @@ class CActionPlannerAction :
 protected:
 	typedef	CActionPlanner<_object_type>					inherited_planner;
 	typedef	CActionBase<_object_type>						inherited_action;
+	typedef inherited_action								_world_operator;
 	typedef typename inherited_action::_edge_value_type		_edge_value_type;
 	typedef typename inherited_action::_condition_type		_condition_type;
 	typedef typename inherited_action::_value_type			_value_type;
