@@ -7,6 +7,9 @@
 #pragma warning(disable:4995)
 #include <d3dx9.h>
 #pragma warning(default:4995)
+#if !defined(USE_DX11)
+#pragma comment(lib, "d3d10_1.lib") // D3D10CreateDeviceAndSwapChain1
+#endif
 #include "../xrRender/HW.h"
 #include "../../xrEngine/XR_IOConsole.h"
 #include "../../Include/xrAPI/xrAPI.h"
@@ -349,23 +352,38 @@ void CHW::CreateDevice( HWND m_hWnd, bool move_window )
 										  &FeatureLevel,		
 										  &pContext);
 #else
-   R =  D3D10CreateDeviceAndSwapChain(   m_pAdapter,
-                                          m_DriverType,
-                                          NULL,
-                                          createDeviceFlags,
-                                          D3D10_SDK_VERSION,
-                                          &sd,
-                                          &m_pSwapChain,
-		                                    &pDevice );
+   // Prefer a real 10.1 device (the only one accepting x_4_1 bytecode);
+   // fall back to 10.0 (x_4_0 profiles, pDevice1 stays NULL).
+   pDevice1 = NULL;
+   R = E_FAIL;
+   {
+       ID3D10Device1* pD1 = NULL;
+       IDXGISwapChain* pSC = NULL;
+       HRESULT R1 = D3D10CreateDeviceAndSwapChain1(m_pAdapter, m_DriverType, NULL,
+           createDeviceFlags, D3D10_FEATURE_LEVEL_10_1, D3D10_1_SDK_VERSION,
+           &sd, &pSC, &pD1);
+       if (SUCCEEDED(R1))
+       {
+           pDevice = pD1;
+           pDevice1 = pD1;
+           m_pSwapChain = pSC;
+           R = R1;
+       }
+   }
+   if (FAILED(R))
+   {
+       R =  D3D10CreateDeviceAndSwapChain(   m_pAdapter,
+                                           m_DriverType,
+                                           NULL,
+                                           createDeviceFlags,
+                                           D3D10_SDK_VERSION,
+                                           &sd,
+                                           &m_pSwapChain,
+ 		                                    &pDevice );
+   }
 
    pContext = pDevice;
-   FeatureLevel = D3D_FEATURE_LEVEL_10_0;
-   if(!FAILED(R))
-   {
-      // Old code ignored D3DX10GetFeatureLevel1's result too; keep it that way.
-      pDevice->QueryInterface(__uuidof(ID3D10Device1), (void**)&pDevice1);
- 	  FeatureLevel = D3D_FEATURE_LEVEL_10_1;
-   }
+   FeatureLevel = pDevice1 ? D3D_FEATURE_LEVEL_10_1 : D3D_FEATURE_LEVEL_10_0;
    pContext1 = pDevice1;
 #endif
 

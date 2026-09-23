@@ -1,5 +1,20 @@
 # Changelog (legend: `*` major / `~` minor / `=` bugfix / `-` removed / `+` added)
 
+## D3DX removal: R3 10.1 device + shader creation (2026-09-23)
+
+= R3 created `x_4_1` bytecode (whenever the GPU exposes 10.1) but passed
+  it to the base 10.0 device, which rejects it with `E_INVALIDARG` — R3
+  died at the first shader (`dumb.ps`) on every 10_1-capable GPU.
+= Fix: prefer a real 10.1 device (`D3D10CreateDeviceAndSwapChain1`,
+  10.0 fallback; links `d3d10_1.lib`) and create VS/PS/GS through
+  `HW.pDevice1` when present; `FeatureLevel` now reflects reality.
+  (A bare `QueryInterface` for the 10.1 interface is NOT equivalent to
+  what `D3DX10GetFeatureLevel1` guaranteed — proven by probe: 4_1
+  creation fails on the 10.0 device even when the QI succeeds.)
+= Drive-by: renamed shadowing `disasm` local in `create_shader` (C4457).
+= Verified: R3 menu boot + in-level screenshot (sun/sky/HUD clean);
+  build 0 errors, 0 warnings.
+
 ## D3DX removal 7d2: DX10/11 texture pipeline (2026-09-23)
 
 = `dx10Texture.cpp` load (2D/cube/volume, LOD resample + box chain,

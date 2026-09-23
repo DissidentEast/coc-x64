@@ -737,12 +737,15 @@ static HRESULT create_shader				(
 	)
 {
 	HRESULT		_result = E_FAIL;
+	// x_4_1 bytecode is only accepted by the 10.1 device; the base
+	// ID3D10Device rejects it with E_INVALIDARG on 10_1-capable GPUs.
+	ID3D10Device* pShaderDevice = HW.pDevice1 ? HW.pDevice1 : HW.pDevice;
 	if (pTarget[0] == 'p') {
 		SPS* sps_result = (SPS*)result;
 #ifdef USE_DX11
-		_result			= HW.pDevice->CreatePixelShader(buffer, buffer_size, 0, &sps_result->ps);
+		_result			= pShaderDevice->CreatePixelShader(buffer, buffer_size, 0, &sps_result->ps);
 #else // #ifdef USE_DX11
-		_result			= HW.pDevice->CreatePixelShader(buffer, buffer_size, &sps_result->ps);
+		_result			= pShaderDevice->CreatePixelShader(buffer, buffer_size, &sps_result->ps);
 #endif // #ifdef USE_DX11
 		if ( !SUCCEEDED(_result) ) {
 			Log			("! PS: ", file_name);
@@ -776,9 +779,9 @@ static HRESULT create_shader				(
 	else if (pTarget[0] == 'v') {
 		SVS* svs_result = (SVS*)result;
 #ifdef USE_DX11
-		_result			= HW.pDevice->CreateVertexShader(buffer, buffer_size, 0, &svs_result->vs);
+		_result			= pShaderDevice->CreateVertexShader(buffer, buffer_size, 0, &svs_result->vs);
 #else // #ifdef USE_DX11
-		_result			= HW.pDevice->CreateVertexShader(buffer, buffer_size, &svs_result->vs);
+		_result			= pShaderDevice->CreateVertexShader(buffer, buffer_size, &svs_result->vs);
 #endif // #ifdef USE_DX11
 
 		if ( !SUCCEEDED(_result) ) {
@@ -824,9 +827,9 @@ static HRESULT create_shader				(
 	else if (pTarget[0] == 'g') {
 		SGS* sgs_result = (SGS*)result;
 #ifdef USE_DX11
-		_result			= HW.pDevice->CreateGeometryShader(buffer, buffer_size, 0, &sgs_result->gs);
+		_result			= pShaderDevice->CreateGeometryShader(buffer, buffer_size, 0, &sgs_result->gs);
 #else // #ifdef USE_DX11
-		_result			= HW.pDevice->CreateGeometryShader(buffer, buffer_size, &sgs_result->gs);
+		_result			= pShaderDevice->CreateGeometryShader(buffer, buffer_size, &sgs_result->gs);
 #endif // #ifdef USE_DX11
 		if ( !SUCCEEDED(_result) ) {
 			Log			("! GS: ", file_name);
@@ -860,15 +863,15 @@ static HRESULT create_shader				(
 
 	if ( disasm )
 	{
-		ID3DBlob*		disasm	= 0;
-		D3DDisassemble	(buffer, buffer_size, FALSE, 0, &disasm );
+		ID3DBlob*		pDisasm	= 0;
+		D3DDisassemble	(buffer, buffer_size, FALSE, 0, &pDisasm );
 		//D3DXDisassembleShader		(LPDWORD(code->GetBufferPointer()), FALSE, 0, &disasm );
 		string_path		dname;
 		strconcat		(sizeof(dname),dname,"disasm\\",file_name,('v'==pTarget[0])?".vs":('p'==pTarget[0])?".ps":".gs" );
 		IWriter*		W		= FS.w_open("$logs$",dname);
-		W->w			(disasm->GetBufferPointer(),(u32)disasm->GetBufferSize());
+		W->w			(pDisasm->GetBufferPointer(),(u32)pDisasm->GetBufferSize());
 		FS.w_close		(W);
-		_RELEASE		(disasm);
+		_RELEASE		(pDisasm);
 	}
 
 	return				_result;
